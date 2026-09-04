@@ -1,0 +1,84 @@
+<div class="mx-auto w-full max-w-[1224px]">
+    <div class="mb-[32px] flex flex-wrap items-center justify-between gap-4">
+        <h1 class="text-[#101828] text-[24px] font-bold leading-[32px]">Clientes</h1>
+
+        <div class="flex items-center gap-3">
+            <button
+                type="button"
+                disabled
+                title="Próximamente"
+                class="flex h-10 cursor-default items-center gap-2 rounded-md border border-[#1c5480] px-4 text-sm text-[#1c5480]"
+            >
+                <x-icon name="sliders-horizontal" class="h-4 w-4" />
+                Filtros
+            </button>
+            <a
+                href="{{ route('clientes.create') }}"
+                wire:navigate
+                class="flex h-10 items-center gap-2 rounded-md bg-[#1c5480] px-4 text-sm font-medium text-white hover:bg-[#174567]"
+            >
+                <x-icon name="plus" class="h-4 w-4" />
+                Nuevo Cliente
+            </a>
+        </div>
+    </div>
+
+    @if (session('status'))
+        <p class="mb-4 text-sm font-medium text-green-600">{{ session('status') }}</p>
+    @endif
+
+    <div class="overflow-hidden rounded-lg bg-white shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="w-full min-w-[760px] text-left">
+                <thead>
+                    <tr class="border-b border-slate-100 bg-slate-50/60 text-[11px] tracking-wide text-slate-500 uppercase">
+                        <th class="px-6 py-3 font-medium">Código</th>
+                        <th class="px-6 py-3 font-medium">Razón social</th>
+                        <th class="px-6 py-3 font-medium">Localidad</th>
+                        <th class="px-6 py-3 font-medium">Vendedor</th>
+                        <th class="px-6 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach ($clientes as $cliente)
+                        <tr wire:key="cliente-{{ $cliente['id'] }}" class="border-b border-slate-100 last:border-0 hover:bg-slate-50/60">
+                            <td class="px-6 py-4 text-sm text-slate-500">{{ $cliente['codigo'] }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-800">{{ $cliente['razon_social'] }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-600">{{ $cliente['localidad'] ?? '-' }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-600">{{ $cliente['vendedor'] ?? '-' }}</td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center justify-end gap-3">
+                                    <a
+                                        href="{{ route('clientes.edit', $cliente['id']) }}"
+                                        wire:navigate
+                                        aria-label="Editar {{ $cliente['razon_social'] }}"
+                                        class="text-slate-400 hover:text-[#1c5480]"
+                                    >
+                                        <x-icon name="square-pen" class="h-4 w-4" />
+                                    </a>
+                                    <button
+                                        type="button"
+                                        wire:click="eliminar({{ $cliente['id'] }})"
+                                        wire:confirm="¿Eliminar el cliente {{ $cliente['codigo'] }} - {{ $cliente['razon_social'] }}?"
+                                        aria-label="Eliminar {{ $cliente['razon_social'] }}"
+                                        class="text-slate-400 hover:text-red-600"
+                                    >
+                                        <x-icon name="trash-2" class="h-4 w-4" />
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    @endforeach
+
+                    @if ($clientes->isEmpty())
+                        <tr>
+                            <td colspan="5" class="px-6 py-10 text-center text-sm text-slate-400">
+                                Todavía no hay clientes cargados.
+                            </td>
+                        </tr>
+                    @endif
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
