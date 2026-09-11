@@ -49,6 +49,7 @@
                         <th class="px-6 py-3 font-medium">Código</th>
                         <th class="px-6 py-3 font-medium">Razón social</th>
                         <th class="px-6 py-3 font-medium">Localidad</th>
+                        <th class="px-6 py-3 font-medium">Rubro</th>
                         <th class="px-6 py-3 font-medium">Vendedor</th>
                         <th class="px-6 py-3"></th>
                     </tr>
@@ -59,9 +60,18 @@
                             <td class="px-6 py-4 text-sm text-slate-500">{{ $prospecto['codigo'] }}</td>
                             <td class="px-6 py-4 text-sm text-slate-800">{{ $prospecto['razon_social'] }}</td>
                             <td class="px-6 py-4 text-sm text-slate-600">{{ $prospecto['localidad'] ?? '-' }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-600">{{ $prospecto['rubro'] ?? '-' }}</td>
                             <td class="px-6 py-4 text-sm text-slate-600">{{ $prospecto['vendedor'] ?? '-' }}</td>
                             <td class="px-6 py-4">
                                 <div class="flex items-center justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        wire:click="ver({{ $prospecto['id'] }})"
+                                        aria-label="Ver {{ $prospecto['razon_social'] }}"
+                                        class="text-slate-400 hover:text-[#1c5480]"
+                                    >
+                                        <x-icon name="eye" class="h-4 w-4" />
+                                    </button>
                                     <a
                                         href="{{ route('prospectos.edit', $prospecto['id']) }}"
                                         wire:navigate
@@ -86,7 +96,7 @@
 
                     @if ($prospectos->isEmpty())
                         <tr>
-                            <td colspan="5" class="px-6 py-10 text-center text-sm text-slate-400">
+                            <td colspan="6" class="px-6 py-10 text-center text-sm text-slate-400">
                                 No hay prospectos para esta solapa.
                             </td>
                         </tr>
@@ -95,4 +105,6 @@
             </table>
         </div>
     </div>
+
+    <x-ficha-contacto :ficha="$ficha" ruta="prospectos" titulo="Prospecto" />
 </div>

@@ -1,4 +1,4 @@
-@props(['label' => null, 'modelo', 'opciones' => [], 'vacio' => '-', 'live' => false, 'deshabilitado' => false, 'ayuda' => null])
+@props(['label' => null, 'modelo', 'opciones' => [], 'vacio' => '-', 'live' => false, 'deshabilitado' => false, 'ayuda' => null, 'requerido' => false])
 
 @php
     // Lista simple: el value es el propio texto. Mapa (id => nombre, clave => titulo): el value es la clave.
@@ -8,7 +8,7 @@
 
 <div {{ $attributes->merge(['class' => 'flex flex-col gap-1.5']) }}>
     @if ($label !== null)
-        <label for="{{ $modelo }}" class="text-sm text-slate-600">{{ $label }}</label>
+        <x-campo.etiqueta :para="$modelo" :requerido="$requerido">{{ $label }}</x-campo.etiqueta>
     @endif
 
     <div class="relative">

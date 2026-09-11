@@ -2,13 +2,15 @@
 
 namespace App\Livewire;
 
+use App\Models\Contacto;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /**
- * Datos hardcodeados: se reemplazan por consultas reales cuando existan
- * los modelos de cotizaciones.
+ * Toneladas y alertas siguen hardcodeadas: se reemplazan por consultas reales
+ * cuando existan los modelos de cotizaciones.
  */
 #[Layout('components.layouts.panel')]
 #[Title('Dashboard')]
@@ -23,12 +25,26 @@ class Dashboard extends Component
                 ['codigo' => 'COT-038', 'estado' => 'Pendiente', 'cliente' => 'Metalúrgica del Sur', 'toneladas' => 1.2, 'dias' => 11],
                 ['codigo' => 'COT-035', 'estado' => 'Pendiente', 'cliente' => 'Grupo Fernandez', 'toneladas' => 0.5, 'dias' => 9],
             ],
-            'prospectos' => [
-                ['vendedor' => 'Cristian Aguero', 'empresa' => 'Construcciones Rivas', 'contacto' => 'M. Rivas', 'dias' => 1],
-                ['vendedor' => 'Juan Garcia', 'empresa' => 'Plásticos del Norte', 'contacto' => 'A. Gomez', 'dias' => 2],
-                ['vendedor' => 'Rodrigo Lopez', 'empresa' => 'Autopartes Mendoza', 'contacto' => 'C. Varela', 'dias' => 4],
-                ['vendedor' => 'Cristian Aguero', 'empresa' => 'Embalajes Patagonia', 'contacto' => 'R. Torres', 'dias' => 6],
-            ],
+            'prospectos' => $this->nuevosProspectos(),
         ]);
+    }
+
+    /**
+     * Prospectos dados de alta en los ultimos 7 dias, el mas nuevo primero.
+     */
+    private function nuevosProspectos(): Collection
+    {
+        return Contacto::with('vendedor')
+            ->enEstado(Contacto::PROSPECTO)
+            ->where('created_at', '>=', now()->subDays(7)->startOfDay())
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn (Contacto $contacto) => [
+                'id' => $contacto->id,
+                'vendedor' => $contacto->vendedor?->nombre ?? 'Sin vendedor',
+                'empresa' => $contacto->razon_social,
+                'contacto' => $contacto->celular ?: $contacto->telefono ?: $contacto->email ?: '-',
+                'dias' => (int) $contacto->created_at->startOfDay()->diffInDays(now()->startOfDay()),
+            ]);
     }
 }

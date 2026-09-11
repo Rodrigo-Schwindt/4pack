@@ -86,17 +86,33 @@
 
         <ul class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             @foreach ($prospectos as $prospecto)
-                <li class="rounded-md border border-blue-100 bg-[#EDF4FD] px-4 py-3">
-                    <div class="flex items-center justify-between gap-2">
-                        <span class="rounded bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800">{{ $prospecto['vendedor'] }}</span>
-                        <span class="text-xs whitespace-nowrap text-slate-500">
-                            Hace {{ $prospecto['dias'] }} {{ $prospecto['dias'] === 1 ? 'día' : 'días' }}
-                        </span>
-                    </div>
-                    <p class="mt-2 text-sm text-slate-800">{{ $prospecto['empresa'] }}</p>
-                    <p class="text-xs text-slate-400">Contacto: {{ $prospecto['contacto'] }}</p>
+                <li wire:key="prospecto-{{ $prospecto['id'] }}">
+                    <a
+                        href="{{ route('prospectos.edit', $prospecto['id']) }}"
+                        wire:navigate
+                        class="block rounded-md border border-blue-100 bg-[#EDF4FD] px-4 py-3 transition-colors hover:border-[#1c5480]/40 hover:bg-[#e3eefb]"
+                    >
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="rounded bg-blue-100 px-2 py-0.5 text-[11px] font-medium text-blue-800">{{ $prospecto['vendedor'] }}</span>
+                            <span class="text-xs whitespace-nowrap text-slate-500">
+                                @if ($prospecto['dias'] === 0)
+                                    Hoy
+                                @else
+                                    Hace {{ $prospecto['dias'] }} {{ $prospecto['dias'] === 1 ? 'día' : 'días' }}
+                                @endif
+                            </span>
+                        </div>
+                        <p class="mt-2 text-sm text-slate-800">{{ $prospecto['empresa'] }}</p>
+                        <p class="text-xs text-slate-400">Contacto: {{ $prospecto['contacto'] }}</p>
+                    </a>
                 </li>
             @endforeach
+
+            @if ($prospectos->isEmpty())
+                <li class="col-span-full rounded-md border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
+                    No se cargaron prospectos en los últimos 7 días.
+                </li>
+            @endif
         </ul>
     </section>
 </div>

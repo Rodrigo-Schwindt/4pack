@@ -84,6 +84,7 @@ class Detalle extends Component
 
             $this->fila[$this->clave($item->id, $proveedorId)] = [
                 'costo' => $this->comoTexto($precio?->costo),
+                'peso_especifico' => $this->comoTexto($item->peso_especifico),
                 'costo_mas_1tn' => $this->comoTexto($precio?->costo_mas_1tn),
                 'flete' => (int) (bool) $precio?->flete,
                 'donde' => (string) $precio?->donde,
@@ -119,6 +120,9 @@ class Detalle extends Component
             }
 
             $flete = (bool) $datos['flete'];
+
+            // Dato del material: vale para todos sus proveedores.
+            $item->update(['peso_especifico' => $datos['peso_especifico'] !== '' ? $datos['peso_especifico'] : null]);
 
             // Sin costo la celda queda vacia: no se guarda un precio en blanco.
             if ($datos['costo'] === '' || $datos['costo'] === null) {
@@ -358,6 +362,7 @@ class Detalle extends Component
             $clave = 'fila.'.$this->clave($item->id, $proveedorId);
 
             $reglas[$clave.'.costo'] = ['nullable', 'numeric', 'min:0'];
+            $reglas[$clave.'.peso_especifico'] = ['nullable', 'numeric', 'min:0'];
             $reglas[$clave.'.costo_mas_1tn'] = ['nullable', 'numeric', 'min:0'];
             $reglas[$clave.'.costo_flete'] = ['nullable', 'numeric', 'min:0'];
             $reglas[$clave.'.donde'] = ['nullable', 'string', 'max:255'];

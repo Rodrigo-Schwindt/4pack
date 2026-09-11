@@ -1,13 +1,16 @@
-@if ($this->sinImpresion)
-    <div class="px-6 py-6">
-        <div class="rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center">
-            <p class="text-sm text-slate-500">
-                Poné <span class="font-medium text-slate-700">Impresión</span> en Si para cargar los datos técnicos.
-            </p>
-        </div>
-    </div>
-@else
-    <div class="grid gap-x-6 gap-y-5 px-6 py-6 md:grid-cols-2 xl:grid-cols-4">
+@php
+    // Sin impresion los datos tecnicos no se pueden completar todavia.
+    $trabado = $this->sinImpresion;
+@endphp
+
+<div class="px-6 py-6">
+    @if ($trabado)
+        <p class="mb-5 text-sm text-slate-500">
+            Poné <span class="font-medium text-slate-700">Impresión</span> en Si para cargar los datos técnicos.
+        </p>
+    @endif
+
+    <div class="grid gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-4">
         <div class="flex flex-col gap-5">
             {{-- Ancho (cm) x Módulos Ancho (cm) --}}
             <x-campo.texto label="Ancho refilado (cm)" modelo="bobinas.ancho_refilado" calculado />
@@ -49,9 +52,10 @@
                         <button
                             type="button"
                             wire:click="abrirExtra"
+                            @disabled($trabado)
                             title="Ancho refilado + {{ $this->anchoLaminaExtra }} — clic para cambiar el valor"
                             aria-label="Cambiar el valor que se suma al ancho refilado"
-                            class="rounded-md border border-slate-200 p-2 text-slate-500 hover:bg-slate-50 hover:text-[#1c5480]"
+                            class="rounded-md border border-slate-200 p-2 {{ $trabado ? 'cursor-default text-slate-300' : 'text-slate-500 hover:bg-slate-50 hover:text-[#1c5480]' }}"
                         >
                             <x-icon name="sliders-horizontal" class="h-4 w-4" />
                         </button>
@@ -61,9 +65,9 @@
         </div>
 
         <div class="flex flex-col gap-5">
-            <x-campo.texto label="Impresión Scrap (cm)" modelo="bobinas.impresion_scrap" />
-            <x-campo.texto label="Laminación Scrap (cm)" modelo="bobinas.laminacion_scrap" />
-            <x-campo.texto label="Bilaminación Scrap (cm)" modelo="bobinas.bilaminacion_scrap" />
+            <x-campo.texto label="Impresión Scrap (cm)" modelo="bobinas.impresion_scrap" :deshabilitado="$trabado" />
+            <x-campo.texto label="Laminación Scrap (cm)" modelo="bobinas.laminacion_scrap" :deshabilitado="$trabado" />
+            <x-campo.texto label="Bilaminación Scrap (cm)" modelo="bobinas.bilaminacion_scrap" :deshabilitado="$trabado" />
         </div>
 
         <div class="flex flex-col gap-5">
@@ -72,6 +76,6 @@
             <x-campo.texto label="U$S" modelo="bobinas.bilaminacion_scrap_usd" calculado />
         </div>
 
-        <x-campo.select label="Mangas disponibles (cm)" modelo="bobinas.mangas" :opciones="$mangas" />
+        <x-campo.ajuste label="Mangas disponibles (cm)" grupo="mangas" modelo="bobinas.mangas" :opciones="$mangas" :creando="$creando" :campo-alta="$campoAlta" :deshabilitado="$trabado" />
     </div>
-@endif
+</div>

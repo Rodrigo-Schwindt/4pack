@@ -72,4 +72,4 @@
 <div class="hidden xl:block"></div>
 
 {{-- Desarrollo toma los valores de mangas cargados en Configuración > Ajustes. --}}
-<x-campo.ajuste label="Desarrollo (50)" grupo="mangas" modelo="bobinas.desarrollo" :opciones="$mangas" :creando="$creando" />
+<x-campo.ajuste label="Desarrollo (50)" grupo="mangas" modelo="bobinas.desarrollo" :opciones="$mangas" :creando="$creando" :campo-alta="$campoAlta" />

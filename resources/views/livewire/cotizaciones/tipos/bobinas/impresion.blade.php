@@ -1,5 +1,5 @@
 <div class="grid gap-x-6 gap-y-5 px-6 py-6 md:grid-cols-2 xl:grid-cols-4">
-    <x-campo.select label="Impresión" modelo="bobinas.impresion" :opciones="$opciones['si_no']" live />
+    <x-campo.select label="Impresión" modelo="bobinas.impresion" :opciones="$opciones['si_no']" live requerido />
     <x-campo.select label="Reprint" modelo="bobinas.reprint" :opciones="$opciones['si_no']" />
 
     <div class="flex flex-col gap-5">

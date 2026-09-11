@@ -4,6 +4,7 @@ namespace App\Livewire\Clientes;
 
 use App\Livewire\Contactos\Listado;
 use App\Models\Contacto;
+use App\Models\Vendedor;
 use Livewire\Attributes\Title;
 
 #[Title('Clientes')]
@@ -17,7 +18,9 @@ class Index extends Listado
     public function render()
     {
         return view('livewire.clientes.index', [
-            'clientes' => $this->listado(),
+            'clientes' => $this->listado($this->vendedorActivo),
+            'ficha' => $this->ficha(),
+            'vendedores' => Vendedor::orderBy('nombre')->get(['id', 'nombre']),
         ]);
     }
 }

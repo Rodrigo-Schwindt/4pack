@@ -1,6 +1,24 @@
+@php
+    $solapa = fn (bool $activa) => 'border-b-2 px-1 pb-1 text-sm '
+        .($activa ? 'border-[#1c5480] text-slate-900' : 'border-transparent text-slate-400 hover:text-slate-600');
+@endphp
+
 <div class="mx-auto w-full max-w-[1224px]">
-    <div class="mb-[32px] flex flex-wrap items-center justify-between gap-4">
-        <h1 class="text-[#101828] text-[24px] font-bold leading-[32px]">Clientes</h1>
+    <h1 class="mb-[32px] text-[#101828] text-[24px] font-bold leading-[32px]">Clientes</h1>
+
+    @if (session('status'))
+        <p class="mb-4 text-sm font-medium text-green-600">{{ session('status') }}</p>
+    @endif
+
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-4">
+        <nav class="flex flex-wrap items-center gap-6">
+            <button type="button" wire:click="filtrar(null)" class="{{ $solapa(! $vendedorActivo) }}">Todos</button>
+            @foreach ($vendedores as $vendedor)
+                <button type="button" wire:click="filtrar({{ $vendedor->id }})" class="{{ $solapa($vendedorActivo === $vendedor->id) }}">
+                    {{ $vendedor->nombre }}
+                </button>
+            @endforeach
+        </nav>
 
         <div class="flex items-center gap-3">
             <button
@@ -23,10 +41,6 @@
         </div>
     </div>
 
-    @if (session('status'))
-        <p class="mb-4 text-sm font-medium text-green-600">{{ session('status') }}</p>
-    @endif
-
     <div class="overflow-hidden rounded-lg bg-white shadow-sm">
         <div class="overflow-x-auto">
             <table class="w-full min-w-[760px] text-left">
@@ -35,6 +49,7 @@
                         <th class="px-6 py-3 font-medium">Código</th>
                         <th class="px-6 py-3 font-medium">Razón social</th>
                         <th class="px-6 py-3 font-medium">Localidad</th>
+                        <th class="px-6 py-3 font-medium">Rubro</th>
                         <th class="px-6 py-3 font-medium">Vendedor</th>
                         <th class="px-6 py-3"></th>
                     </tr>
@@ -45,9 +60,18 @@
                             <td class="px-6 py-4 text-sm text-slate-500">{{ $cliente['codigo'] }}</td>
                             <td class="px-6 py-4 text-sm text-slate-800">{{ $cliente['razon_social'] }}</td>
                             <td class="px-6 py-4 text-sm text-slate-600">{{ $cliente['localidad'] ?? '-' }}</td>
+                            <td class="px-6 py-4 text-sm text-slate-600">{{ $cliente['rubro'] ?? '-' }}</td>
                             <td class="px-6 py-4 text-sm text-slate-600">{{ $cliente['vendedor'] ?? '-' }}</td>
                             <td class="px-6 py-4">
                                 <div class="flex items-center justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        wire:click="ver({{ $cliente['id'] }})"
+                                        aria-label="Ver {{ $cliente['razon_social'] }}"
+                                        class="text-slate-400 hover:text-[#1c5480]"
+                                    >
+                                        <x-icon name="eye" class="h-4 w-4" />
+                                    </button>
                                     <a
                                         href="{{ route('clientes.edit', $cliente['id']) }}"
                                         wire:navigate
@@ -72,8 +96,8 @@
 
                     @if ($clientes->isEmpty())
                         <tr>
-                            <td colspan="5" class="px-6 py-10 text-center text-sm text-slate-400">
-                                Todavía no hay clientes cargados.
+                            <td colspan="6" class="px-6 py-10 text-center text-sm text-slate-400">
+                                {{ $vendedorActivo ? 'No hay clientes para esta solapa.' : 'Todavía no hay clientes cargados.' }}
                             </td>
                         </tr>
                     @endif
@@ -81,4 +105,6 @@
             </table>
         </div>
     </div>
+
+    <x-ficha-contacto :ficha="$ficha" ruta="clientes" titulo="Cliente" />
 </div>

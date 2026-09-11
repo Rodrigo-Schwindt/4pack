@@ -13,6 +13,7 @@
                     :modelo="'bobinas.materiales.'.$indice.'.material_id'"
                     :opciones="$this->materiales"
                     live
+                    requerido
                     class="flex-1"
                 />
                 <x-campo.texto label="mic" :modelo="'bobinas.materiales.'.$indice.'.mic'" class="w-[64px] shrink-0" />
@@ -29,10 +30,10 @@
     @endforeach
 
     <div class="flex flex-col gap-5">
-        <x-campo.texto label="Cantidad (mts)" modelo="bobinas.cantidad" tipo="number" paso="0.01" modificador="live.blur" />
-        <x-campo.texto label="Peso (kg)" modelo="bobinas.peso" calculado />
+        <x-campo.texto label="Cantidad (mts)" modelo="bobinas.cantidad" tipo="number" paso="0.01" modificador="live.blur" requerido />
+        <x-campo.texto label="Peso (kg)" modelo="bobinas.peso" calculado :ayuda="$this->ayudaPeso()" />
         <x-campo.select label="Peso neto" modelo="bobinas.peso_neto" :opciones="$opciones['si_no']" />
         <x-campo.texto label="x bobina (kg)" modelo="bobinas.por_bobina" />
-        <x-campo.ajuste label="Buje" grupo="bujes" modelo="bobinas.buje" :opciones="$bujes" :creando="$creando" sufijo="´´" />
+        <x-campo.ajuste label="Buje" grupo="bujes" modelo="bobinas.buje" :opciones="$bujes" :creando="$creando" :campo-alta="$campoAlta" sufijo="´´" />
     </div>
 </div>

@@ -15,9 +15,9 @@ beforeEach(function () {
 });
 
 /**
- * El formulario de cotizacion no muestra nada hasta que hay un cliente elegido.
+ * El formulario de cotizacion no muestra nada hasta que hay cliente y vendedor.
  */
-function cotizacionConCliente(string $razonSocial = 'Arcor')
+function cotizacionIniciada(string $razonSocial = 'Arcor')
 {
     $cliente = Contacto::create([
         'codigo' => Contacto::siguienteCodigo(),
@@ -25,7 +25,21 @@ function cotizacionConCliente(string $razonSocial = 'Arcor')
         'razon_social' => $razonSocial,
     ]);
 
-    return Livewire::test(App\Livewire\Cotizaciones\Form::class)->set('cliente_id', $cliente->id);
+    $vendedor = Vendedor::firstOrCreate(['nombre' => 'Ariel'], ['comision' => 2, 'activo' => true]);
+
+    return Livewire::test(App\Livewire\Cotizaciones\Form::class)
+        ->set('cliente_id', $cliente->id)
+        ->set('vendedor_id', $vendedor->id);
+}
+
+/**
+ * Si el campo que apunta a ese modelo esta deshabilitado en el html.
+ */
+function campoBloqueado(string $html, string $modelo): bool
+{
+    preg_match('/<(input|select)\b[^>]*"'.preg_quote($modelo, '/').'"[^>]*>/s', $html, $etiqueta);
+
+    return str_contains($etiqueta[0] ?? '', 'disabled');
 }
 
 test('las vistas del panel responden', function (string $url) {
@@ -181,7 +195,7 @@ test('el alta de cotizaciones propone el siguiente número del año', function (
 });
 
 test('sin tipo de producto las solapas quedan trabadas', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->assertSet('solapa', 'datos')
         ->call('verSolapa', 'costos')
         ->assertSet('solapa', 'datos')
@@ -191,7 +205,7 @@ test('sin tipo de producto las solapas quedan trabadas', function () {
 });
 
 test('cambiar el tipo de producto vuelve a la solapa de datos', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->call('verSolapa', 'entrega')
         ->set('tipo_producto', 'confeccion-pouch')
@@ -210,7 +224,7 @@ test('el alta de cotizaciones lista los clientes y los vendedores', function () 
 });
 
 test('elegir bobinas despliega sus secciones', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->assertDontSee('Forma de entrega')
         ->set('tipo_producto', 'bobinas')
         ->assertSee('Módulos Desarrollo (cm)')
@@ -221,7 +235,7 @@ test('elegir bobinas despliega sus secciones', function () {
 });
 
 test('la forma de entrega suma y quita filas', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         ->assertCount('entregas', 2)
@@ -236,7 +250,7 @@ test('la forma de entrega suma y quita filas', function () {
 });
 
 test('la solapa de costos de bobinas muestra las tablas calculadas', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->call('verSolapa', 'costos')
         ->assertSee('Proveedores')
@@ -251,7 +265,7 @@ test('la solapa de costos de bobinas muestra las tablas calculadas', function ()
 });
 
 test('la solapa de cotización arma el texto y sigue las entregas cargadas', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->call('verSolapa', 'cotizacion')
         ->assertSee('Cotización 1')
@@ -265,7 +279,7 @@ test('la solapa de cotización arma el texto y sigue las entregas cargadas', fun
 });
 
 test('la solapa de orden de compra cambia el botón principal y lista lo cotizado', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->assertSee('Descargar PDF')
         ->call('verSolapa', 'orden-de-compra')
@@ -277,7 +291,7 @@ test('la solapa de orden de compra cambia el botón principal y lista lo cotizad
 });
 
 test('la orden de compra pide una fecha de entrega por cada entrega cargada', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->call('verSolapa', 'orden-de-compra')
         ->assertSeeHtml('wire:model="entregas.0.fecha_entrega"')
@@ -288,7 +302,7 @@ test('la orden de compra pide una fecha de entrega por cada entrega cargada', fu
 });
 
 test('la solapa de entrega separa lo pactado de lo entregado', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->call('verSolapa', 'entrega')
         ->assertSee('Enviar pedido')
@@ -303,7 +317,7 @@ test('la solapa de entrega separa lo pactado de lo entregado', function () {
 });
 
 test('las cuatro solapas de bobinas responden', function (string $solapa) {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->call('verSolapa', $solapa)
         ->assertSet('solapa', $solapa)
@@ -351,9 +365,9 @@ test('elegir un cliente y un vendedor guarda el id, no el nombre', function () {
         ->assertSet('vendedor_id', $vendedor->id);
 });
 
-test('sin cliente no se puede elegir el tipo de producto', function () {
+test('sin cliente ni vendedor no se puede elegir el tipo de producto', function () {
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
-        ->assertSee('Elegí primero el cliente')
+        ->assertSee('Elegí primero el cliente y el vendedor')
         ->set('tipo_producto', 'bobinas')
         // El tipo queda seteado pero los campos no se muestran ni se destraban las solapas.
         ->assertDontSee('Módulos Desarrollo (cm)')
@@ -361,12 +375,16 @@ test('sin cliente no se puede elegir el tipo de producto', function () {
         ->assertSet('solapa', 'datos');
 });
 
-test('elegir el cliente habilita los campos del tipo de producto', function () {
+test('elegir cliente y vendedor habilita los campos del tipo de producto', function () {
     $cliente = Contacto::create(['codigo' => '000445', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
+    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true]);
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
-        ->assertDontSee('Elegí primero el cliente')
+        // Con cliente pero sin vendedor sigue trabado.
+        ->assertSee('Elegí primero el vendedor')
+        ->set('vendedor_id', $vendedor->id)
+        ->assertDontSee('Elegí primero')
         ->set('tipo_producto', 'bobinas')
         ->assertSee('Módulos Desarrollo (cm)')
         ->call('verSolapa', 'costos')
@@ -395,6 +413,7 @@ test('el desarrollo toma las mangas cargadas en ajustes y permite sumar una', fu
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->assertSeeHtml('<option value="35">35</option>')
         ->call('abrirAlta', 'mangas')
@@ -410,7 +429,7 @@ test('el desarrollo toma las mangas cargadas en ajustes y permite sumar una', fu
 test('cargar una manga que ya existe la elige en vez de fallar', function () {
     App\Models\Ajuste::create(['grupo' => 'mangas', 'valor' => 35]);
 
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->call('abrirAlta', 'mangas')
         ->set('nuevoValor', '35')
         ->call('guardarAlta')
@@ -424,9 +443,11 @@ test('cargar una manga que ya existe la elige en vez de fallar', function () {
 test('el producto se carga y se borra desde la cotización, y es solo del cliente', function () {
     $arcor = Contacto::create(['codigo' => '000445', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
     $bagley = Contacto::create(['codigo' => '000446', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Bagley']);
+    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true]);
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $arcor->id)
+        ->set('vendedor_id', $vendedor->id)
         ->set('tipo_producto', 'bobinas')
         ->call('abrirAlta', 'producto')
         ->set('nuevoValor', 'Flowpack x 700g')
@@ -441,11 +462,13 @@ test('el producto se carga y se borra desde la cotización, y es solo del client
     // El otro cliente no ve el producto.
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $bagley->id)
+        ->set('vendedor_id', $vendedor->id)
         ->set('tipo_producto', 'bobinas')
         ->assertDontSee('Flowpack x 700g');
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $arcor->id)
+        ->set('vendedor_id', $vendedor->id)
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.producto_id', $producto->id)
         ->call('eliminarProducto')
@@ -476,12 +499,13 @@ test('los productos ya cargados aparecen al elegir el cliente', function () {
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->assertSeeHtml('<option value="'.$producto->id.'">Flowpack x 700g</option>');
 });
 
 test('la manga recién cargada queda elegida en el select', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->call('abrirAlta', 'mangas')
         ->set('nuevoValor', '62')
@@ -500,7 +524,7 @@ test('el cliente viaja al servidor apenas se elige', function () {
 test('el buje toma los valores de ajustes y permite sumar uno', function () {
     App\Models\Ajuste::create(['grupo' => 'bujes', 'valor' => 3]);
 
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         // El valor guardado es el número; el ´´ es solo la unidad que se muestra.
         ->assertSeeHtml('<option value="3">3´´</option>')
@@ -518,7 +542,7 @@ test('el buje toma los valores de ajustes y permite sumar uno', function () {
 test('el buje que ya existe se elige en vez de fallar', function () {
     App\Models\Ajuste::create(['grupo' => 'bujes', 'valor' => 3]);
 
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->call('abrirAlta', 'bujes')
         ->set('nuevoValor', '3')
         ->call('guardarAlta')
@@ -542,7 +566,7 @@ test('configuración administra mangas y bujes', function () {
 });
 
 test('solvente es si/no y laminación simple, bi. o tri.', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->assertSeeHtml('wire:model="bobinas.solvente"')
         ->assertSeeHtml('wire:model="bobinas.laminacion"')
@@ -556,7 +580,7 @@ test('solvente es si/no y laminación simple, bi. o tri.', function () {
 });
 
 test('a la derecha de colores va (diseños + cambios) x colores', function () {
-    $formulario = cotizacionConCliente()->set('tipo_producto', 'bobinas');
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas');
 
     // Sin nada cargado no muestra ningún número.
     expect($formulario->instance()->coloresTotal())->toBe('');
@@ -576,7 +600,7 @@ test('a la derecha de colores va (diseños + cambios) x colores', function () {
 test('los campos que recalculan en el servidor usan wire:model.live', function () {
     // En Livewire 4 un wire:model sin .live no manda nada al servidor, así que
     // el total de colores y el redondeo de los ajustes nunca se actualizaban.
-    $formulario = cotizacionConCliente()->set('tipo_producto', 'bobinas');
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas');
 
     foreach (['bobinas.disenos', 'bobinas.cambios', 'bobinas.colores', 'ajuste_categoria', 'ajuste_vendedor'] as $campo) {
         $formulario->assertSeeHtml('wire:model.live.blur="'.$campo.'"');
@@ -584,7 +608,7 @@ test('los campos que recalculan en el servidor usan wire:model.live', function (
 });
 
 test('el total de colores se ve en la pantalla', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.disenos', '10')
         ->set('bobinas.cambios', '10')
@@ -592,18 +616,23 @@ test('el total de colores se ve en la pantalla', function () {
         ->assertSeeHtml('>200</output>');
 });
 
-test('sin cantidad (mts) no se puede repartir la entrega', function () {
-    cotizacionConCliente()
-        ->set('tipo_producto', 'bobinas')
-        ->assertSee('Completá')
-        ->assertDontSee('1° entrega')
-        ->set('bobinas.cantidad', '67000')
-        ->assertDontSee('Completá')
-        ->assertSee('1° entrega');
+test('sin cantidad (mts) los campos de entrega quedan bloqueados', function () {
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas');
+
+    // Los campos se ven, pero no se pueden completar.
+    $formulario->assertSee('Completá')->assertSee('1° entrega');
+
+    foreach (['entregas.0.flete_zona_id', 'entregas.0.direccion_id', 'entregas.0.cantidad', 'entregas.0.flete_tramo_id'] as $campo) {
+        expect(campoBloqueado($formulario->html(), $campo))->toBeTrue();
+    }
+
+    $formulario->set('bobinas.cantidad', '67000')->assertDontSee('Completá');
+
+    expect(campoBloqueado($formulario->html(), 'entregas.0.cantidad'))->toBeFalse();
 });
 
 test('la forma de entrega avisa cuánto falta repartir', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         ->assertSee('Repartido 0 de 67.000 mts')
@@ -619,7 +648,7 @@ test('la forma de entrega avisa cuánto falta repartir', function () {
 test('los kg / pallets salen de flete insumos', function () {
     $tramo = App\Models\FleteTramo::create(['kg' => 3500, 'pallets' => 6]);
 
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         ->assertSeeHtml('<option value="'.$tramo->id.'">3.500 / 6 pallets</option>');
@@ -637,6 +666,7 @@ test('el flete solo lista las zonas donde el cliente tiene direcciones', functio
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         ->assertSeeHtml('<option value="'.$caba->id.'">Caba</option>')
@@ -654,6 +684,7 @@ test('la dirección se limita a la zona del flete elegido', function () {
 
     $formulario = Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         // Sin flete elegido no hay direcciones para elegir.
@@ -680,6 +711,7 @@ test('la dirección de entrega es solo la del cliente, no la de otro', function 
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         ->set('entregas.0.flete_zona_id', (string) $zona->id)
@@ -688,7 +720,7 @@ test('la dirección de entrega es solo la del cliente, no la de otro', function 
 });
 
 test('avisa cuando el cliente no tiene direcciones con zona', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         ->assertSee('El cliente no tiene direcciones de entrega con zona');
@@ -696,7 +728,7 @@ test('avisa cuando el cliente no tiene direcciones con zona', function () {
 
 test('el ancho refilado y el de lámina se calculan solos', function () {
     // Los valores de la maqueta: 44 x 2 = 88, y 88 + 2 = 90.
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.ancho', '44')
         ->set('bobinas.modulos_ancho', '2')
@@ -709,7 +741,7 @@ test('el ancho refilado y el de lámina se calculan solos', function () {
 });
 
 test('el valor que se suma al ancho de lámina se puede cambiar', function () {
-    $formulario = cotizacionConCliente()
+    $formulario = cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.ancho', '44')
         ->set('bobinas.modulos_ancho', '2')
@@ -727,7 +759,7 @@ test('el valor que se suma al ancho de lámina se puede cambiar', function () {
     expect(App\Models\Parametro::valor(App\Models\Parametro::ANCHO_LAMINA_EXTRA))->toBe(3.5);
 
     // Es del sistema: vale para la próxima cotización también.
-    cotizacionConCliente('Bagley')
+    cotizacionIniciada('Bagley')
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.ancho', '10')
         ->set('bobinas.modulos_ancho', '1')
@@ -735,7 +767,7 @@ test('el valor que se suma al ancho de lámina se puede cambiar', function () {
 });
 
 test('el valor que se suma al ancho de lámina tiene que ser un número', function () {
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->call('abrirExtra')
         ->set('nuevoExtra', 'dos')
         ->call('guardarExtra')
@@ -743,26 +775,25 @@ test('el valor que se suma al ancho de lámina tiene que ser un número', functi
         ->assertSet('editandoExtra', true);
 });
 
-test('sin impresión no se muestran los datos técnicos', function () {
-    $formulario = cotizacionConCliente()
-        ->set('tipo_producto', 'bobinas')
-        // Vacío: todavía no se eligió nada.
-        ->assertSee('Poné')
-        ->assertDontSee('Ancho refilado (cm)')
-        ->assertDontSee('Mangas disponibles (cm)')
-        // El bloque de impresión sí se ve siempre.
-        ->assertSee('Reprint')
-        ->set('bobinas.impresion', 'Si');
+test('sin impresión los datos técnicos quedan bloqueados', function () {
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas');
 
-    $formulario->assertDontSee('Poné')
+    // Los campos se ven, pero no se pueden completar.
+    $formulario->assertSee('Poné')
         ->assertSee('Ancho refilado (cm)')
-        ->assertSee('Ancho lámina (cm)')
-        ->assertSee('Impresión Scrap (cm)')
         ->assertSee('Mangas disponibles (cm)');
 
-    $formulario->set('bobinas.impresion', 'No')
-        ->assertSee('Poné')
-        ->assertDontSee('Ancho refilado (cm)');
+    foreach (['bobinas.impresion_scrap', 'bobinas.laminacion_scrap', 'bobinas.bilaminacion_scrap', 'bobinas.mangas'] as $campo) {
+        expect(campoBloqueado($formulario->html(), $campo))->toBeTrue();
+    }
+
+    $formulario->set('bobinas.impresion', 'Si')->assertDontSee('Poné');
+
+    expect(campoBloqueado($formulario->html(), 'bobinas.impresion_scrap'))->toBeFalse();
+
+    $formulario->set('bobinas.impresion', 'No')->assertSee('Poné');
+
+    expect(campoBloqueado($formulario->html(), 'bobinas.impresion_scrap'))->toBeTrue();
 });
 
 /**
@@ -796,7 +827,7 @@ test('el material sale del catálogo de insumos', function () {
     $tintas = App\Models\Insumo::firstOrCreate(['nombre' => 'Tintas'], ['singular' => 'Tinta']);
     $tintas->familias()->firstOrCreate(['nombre' => 'Base agua'])->items()->firstOrCreate(['nombre' => 'Tinta Cyan']);
 
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->assertSeeHtml('<option value="'.$item->id.'">Polietileno Cristal</option>')
         ->assertDontSee('Tinta Cyan');
@@ -807,7 +838,7 @@ test('el proveedor depende del material elegido', function () {
     // Proveedor del catálogo que no tiene cargado este material.
     App\Models\Proveedor::create(['nombre' => 'Plastiandino']);
 
-    $formulario = cotizacionConCliente()
+    $formulario = cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->assertSee('Elegí primero el material')
         ->set('bobinas.materiales.0.material_id', (string) $item->id);
@@ -824,9 +855,27 @@ test('un material sin proveedores lo avisa', function () {
     $item = $insumo->familias()->firstOrCreate(['nombre' => 'Polietileno'])
         ->items()->firstOrCreate(['nombre' => 'Polietileno EVOH ctal']);
 
-    cotizacionConCliente()
+    cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.materiales.0.material_id', (string) $item->id)
         ->assertSee('Este material no tiene proveedores cargados en Insumos')
         ->assertSet('bobinas.materiales.0.proveedor_id', '');
+});
+
+test('los campos que habilitan a otros van resaltados con asterisco', function () {
+    materialConProveedores();
+
+    $html = cotizacionIniciada()
+        ->set('tipo_producto', 'bobinas')
+        ->html();
+
+    // Cliente, Vendedor, Tipo de producto, Material, Cantidad (mts), Impresión y Flete.
+    foreach (['Cliente', 'Vendedor', 'Tipo de producto', 'Material', 'Cantidad (mts)', 'Impresión', 'Flete'] as $titulo) {
+        expect($html)->toMatch('/font-semibold text-\[#22577C\][^>]*>\s*'.preg_quote(e($titulo), '/').' \*/');
+    }
+
+    // Los que no bloquean nada quedan como estaban.
+    foreach (['Proveedor', 'Reprint', 'Dirección'] as $titulo) {
+        expect($html)->not->toMatch('/font-semibold text-\[#22577C\][^>]*>\s*'.preg_quote(e($titulo), '/').' \*/');
+    }
 });

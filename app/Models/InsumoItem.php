@@ -10,7 +10,20 @@ class InsumoItem extends Model
 {
     protected $table = 'insumo_items';
 
-    protected $fillable = ['insumo_familia_id', 'nombre', 'proveedor_elegido_id'];
+    protected $fillable = ['insumo_familia_id', 'nombre', 'peso_especifico', 'proveedor_elegido_id'];
+
+    protected function casts(): array
+    {
+        return ['peso_especifico' => 'decimal:6'];
+    }
+
+    /**
+     * Kilos que pesan 1000 metros de este material: el peso especifico por mil.
+     */
+    public function kgrsPorMilMetros(): ?float
+    {
+        return $this->peso_especifico === null ? null : (float) $this->peso_especifico * 1000;
+    }
 
     public function familia(): BelongsTo
     {

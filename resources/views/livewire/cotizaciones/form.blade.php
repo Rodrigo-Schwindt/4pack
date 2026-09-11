@@ -5,6 +5,11 @@
     $campo = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none';
     $tituloSeccion = 'px-6 pt-8 pb-5 text-[16px] leading-[normal] font-medium text-black';
 
+    $falta = $this->faltaElegir;
+    $avisoSolapa = $falta
+        ? 'Elegí '.$falta.' y el tipo de producto para habilitar esta solapa'
+        : 'Elegí el tipo de producto para habilitar esta solapa';
+
     $estiloSolapa = function (string $clave) {
         $activa = $this->solapa === $clave;
         $trabada = $this->bloqueado && $clave !== 'datos';
@@ -33,7 +38,7 @@
                     type="button"
                     wire:click="verSolapa('{{ $clave }}')"
                     @disabled($this->bloqueado && $clave !== 'datos')
-                    title="{{ $this->bloqueado && $clave !== 'datos' ? ($this->sinCliente ? 'Elegí el cliente y el tipo de producto para habilitar esta solapa' : 'Elegí el tipo de producto para habilitar esta solapa') : '' }}"
+                    title="{{ $this->bloqueado && $clave !== 'datos' ? $avisoSolapa : '' }}"
                     class="{{ $estiloSolapa($clave) }}"
                 >
                     {{ $titulo }}
@@ -84,13 +89,13 @@
 
         <div class="grid gap-x-6 gap-y-5 px-6 py-6 md:grid-cols-2 xl:grid-cols-4">
             {{-- Live: el cliente decide si se puede elegir el tipo y que productos se listan. --}}
-            <x-campo.select label="Cliente" modelo="cliente_id" :opciones="$clientes->pluck('razon_social', 'id')" live />
+            <x-campo.select label="Cliente" modelo="cliente_id" :opciones="$clientes->pluck('razon_social', 'id')" live requerido />
             <x-campo.select label="Categoría" modelo="categoria" :opciones="Form::OPCIONES['categorias']" />
             <x-campo.texto label="Ajuste" modelo="ajuste_categoria" tipo="number" paso="0.01" modificador="live.blur" />
 
             {{-- Vendedor y su ajuste comparten la cuarta columna. --}}
             <div class="flex items-end gap-3">
-                <x-campo.select label="Vendedor" modelo="vendedor_id" :opciones="$vendedores->pluck('nombre', 'id')" class="flex-1" />
+                <x-campo.select label="Vendedor" modelo="vendedor_id" :opciones="$vendedores->pluck('nombre', 'id')" live requerido class="flex-1" />
                 <x-campo.texto label="Ajuste" modelo="ajuste_vendedor" tipo="number" paso="0.01" modificador="live.blur" class="w-[88px] shrink-0" />
             </div>
 
@@ -120,16 +125,17 @@
                 :opciones="Form::TIPOS_PRODUCTO"
                 vacio=""
                 live
-                :deshabilitado="$this->sinCliente"
-                :ayuda="$this->sinCliente ? 'Elegí primero el cliente' : null"
+                requerido
+                :deshabilitado="(bool) $falta"
+                :ayuda="$falta ? 'Elegí primero '.$falta : null"
             />
 
-            @if ($tipo_producto === 'bobinas' && ! $this->sinCliente)
+            @if ($tipo_producto === 'bobinas' && ! $falta)
                 @include('livewire.cotizaciones.tipos.bobinas.identificacion')
             @endif
         </div>
 
-        @if ($tipo_producto === 'bobinas' && ! $this->sinCliente)
+        @if ($tipo_producto === 'bobinas' && ! $falta)
             <hr class="border-slate-100" />
             @include('livewire.cotizaciones.tipos.bobinas.materiales')
 

@@ -3,6 +3,18 @@
     $usd = fn ($valor) => $valor === null || $valor === '' ? '-' : 'USD '.number_format((float) $valor, 2, ',', '.');
     $celda = 'border-l border-slate-100 px-3 py-3 text-center text-sm';
     $subtitulo = 'border-l border-slate-100 px-3 py-2 text-center text-[10px] font-medium tracking-wide text-slate-500 uppercase';
+
+    // Ancho minimo de cada subcolumna: sin esto el select de Flete queda tan
+    // angosto que se come el "Si" / "No".
+    $anchos = [
+        'costo' => 'min-w-[104px]',
+        'peso_esp' => 'min-w-[104px]',
+        'mas1tn' => 'min-w-[112px]',
+        'flete' => 'min-w-[92px]',
+        'donde' => 'min-w-[132px]',
+        'costo_flete' => 'min-w-[112px]',
+        'total' => 'min-w-[108px]',
+    ];
 @endphp
 
 <div class="mx-auto w-full max-w-[1224px]">
@@ -170,7 +182,7 @@
                             @foreach ($proveedores as $proveedor)
                                 <th
                                     wire:key="cab-{{ $familia->id }}-{{ $proveedor->id }}"
-                                    colspan="{{ $abierto === $proveedor->id ? 6 : 1 }}"
+                                    colspan="{{ $abierto === $proveedor->id ? 7 : 1 }}"
                                     class="border-l border-slate-200 px-3 py-2 text-center text-[11px] font-medium tracking-wide text-slate-600 uppercase"
                                 >
                                     @if ($editandoProveedor === $proveedor->id)
@@ -234,14 +246,15 @@
                         <tr class="bg-slate-50/80">
                             @foreach ($proveedores as $proveedor)
                                 @if ($abierto === $proveedor->id)
-                                    <th class="{{ $subtitulo }}">Costo</th>
-                                    <th class="{{ $subtitulo }}">Más de 1TN</th>
-                                    <th class="{{ $subtitulo }}">Flete</th>
-                                    <th class="{{ $subtitulo }}">Dónde</th>
-                                    <th class="{{ $subtitulo }}">Costo flete</th>
-                                    <th class="{{ $subtitulo }}">Total</th>
+                                    <th class="{{ $subtitulo }} {{ $anchos['costo'] }}">Costo</th>
+                                    <th class="{{ $subtitulo }} {{ $anchos['peso_esp'] }}" title="Dato del material: vale para todos sus proveedores">Peso esp.</th>
+                                    <th class="{{ $subtitulo }} {{ $anchos['mas1tn'] }}">Más de 1TN</th>
+                                    <th class="{{ $subtitulo }} {{ $anchos['flete'] }}">Flete</th>
+                                    <th class="{{ $subtitulo }} {{ $anchos['donde'] }}">Dónde</th>
+                                    <th class="{{ $subtitulo }} {{ $anchos['costo_flete'] }}">Costo flete</th>
+                                    <th class="{{ $subtitulo }} {{ $anchos['total'] }}">Total</th>
                                 @else
-                                    <th class="{{ $subtitulo }}">Total</th>
+                                    <th class="{{ $subtitulo }} {{ $anchos['total'] }}">Total</th>
                                 @endif
                             @endforeach
 
@@ -314,25 +327,28 @@
                                                 : (float) $datos['costo'] + ($conFlete && is_numeric($datos['costo_flete']) ? (float) $datos['costo_flete'] : 0);
                                         @endphp
 
-                                        <td class="{{ $celda }}">
+                                        <td class="{{ $celda }} {{ $anchos['costo'] }}">
                                             <input type="number" step="0.0001" min="0" wire:model.live="fila.{{ $item->id }}_{{ $proveedor->id }}.costo" placeholder="-" aria-label="Costo {{ $item->nombre }} {{ $proveedor->nombre }}" class="{{ $campo }} text-center" />
                                         </td>
-                                        <td class="{{ $celda }}">
+                                        <td class="{{ $celda }} {{ $anchos['peso_esp'] }}">
+                                            <input type="number" step="any" min="0" wire:model.live="fila.{{ $item->id }}_{{ $proveedor->id }}.peso_especifico" placeholder="-" title="Peso específico del material: vale para todos sus proveedores" aria-label="Peso específico {{ $item->nombre }}" class="{{ $campo }} text-center" />
+                                        </td>
+                                        <td class="{{ $celda }} {{ $anchos['mas1tn'] }}">
                                             <input type="number" step="0.0001" min="0" wire:model="fila.{{ $item->id }}_{{ $proveedor->id }}.costo_mas_1tn" placeholder="-" aria-label="Más de 1TN {{ $item->nombre }} {{ $proveedor->nombre }}" class="{{ $campo }} text-center" />
                                         </td>
-                                        <td class="{{ $celda }}">
-                                            <select wire:model.live="fila.{{ $item->id }}_{{ $proveedor->id }}.flete" aria-label="Flete {{ $item->nombre }} {{ $proveedor->nombre }}" class="{{ $campo }}">
+                                        <td class="{{ $celda }} {{ $anchos['flete'] }}">
+                                            <select wire:model.live="fila.{{ $item->id }}_{{ $proveedor->id }}.flete" aria-label="Flete {{ $item->nombre }} {{ $proveedor->nombre }}" class="{{ $campo }} pr-1">
                                                 <option value="0">No</option>
                                                 <option value="1">Si</option>
                                             </select>
                                         </td>
-                                        <td class="{{ $celda }}">
+                                        <td class="{{ $celda }} {{ $anchos['donde'] }}">
                                             <input wire:model="fila.{{ $item->id }}_{{ $proveedor->id }}.donde" placeholder="-" @disabled(! $conFlete) aria-label="Dónde {{ $item->nombre }} {{ $proveedor->nombre }}" class="{{ $campo }} text-center disabled:bg-slate-50 disabled:text-slate-300" />
                                         </td>
-                                        <td class="{{ $celda }}">
+                                        <td class="{{ $celda }} {{ $anchos['costo_flete'] }}">
                                             <input type="number" step="0.0001" min="0" wire:model.live="fila.{{ $item->id }}_{{ $proveedor->id }}.costo_flete" placeholder="-" @disabled(! $conFlete) aria-label="Costo flete {{ $item->nombre }} {{ $proveedor->nombre }}" class="{{ $campo }} text-center disabled:bg-slate-50 disabled:text-slate-300" />
                                         </td>
-                                        <td class="{{ $celda }} {{ $fondo }}">
+                                        <td class="{{ $celda }} {{ $anchos['total'] }} {{ $fondo }}">
                                             <button
                                                 type="button"
                                                 wire:click="elegir({{ $item->id }}, {{ $proveedor->id }})"
@@ -343,7 +359,7 @@
                                             </button>
                                         </td>
                                     @else
-                                        <td class="{{ $celda }} {{ $fondo }}">
+                                        <td class="{{ $celda }} {{ $anchos['total'] }} {{ $fondo }}">
                                             <button
                                                 type="button"
                                                 wire:click="elegir({{ $item->id }}, {{ $proveedor->id }})"
@@ -364,7 +380,7 @@
 
                         @if ($familia->items->isEmpty())
                             <tr class="border-t border-slate-100">
-                                <td colspan="{{ max($proveedores->count(), 1) * 6 + 1 }}" class="px-4 py-8 text-center text-sm text-slate-400">
+                                <td colspan="{{ max($proveedores->count(), 1) * 7 + 1 }}" class="px-4 py-8 text-center text-sm text-slate-400">
                                     Todavía no hay {{ Str::lower($insumo->nombre) }} en esta familia.
                                 </td>
                             </tr>

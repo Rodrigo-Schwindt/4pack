@@ -13,8 +13,8 @@ use App\Models\InsumoItem;
 use App\Models\InsumoPrecio;
 use App\Models\Parametro;
 use App\Models\Proveedor;
-use Illuminate\Support\Collection;
 use App\Models\Vendedor;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -126,6 +126,9 @@ class Form extends Component
 
     public string $nuevoValor = '';
 
+    /** Campo de bobinas que completa el alta al vuelo. */
+    public ?string $campoAlta = null;
+
     /** Edicion en linea del valor que se le suma al ancho refilado. */
     public bool $editandoExtra = false;
 
@@ -157,12 +160,35 @@ class Form extends Component
     }
 
     /**
-     * Sin cliente ni tipo de producto no hay nada que costear ni cotizar.
+     * La cotizacion es de un vendedor: su comision entra en el costo.
+     */
+    #[Computed]
+    public function sinVendedor(): bool
+    {
+        return $this->vendedor_id === null;
+    }
+
+    /**
+     * Que falta elegir antes de poder cargar el producto, en texto.
+     */
+    #[Computed]
+    public function faltaElegir(): ?string
+    {
+        return match (true) {
+            $this->sinCliente && $this->sinVendedor => 'el cliente y el vendedor',
+            $this->sinCliente => 'el cliente',
+            $this->sinVendedor => 'el vendedor',
+            default => null,
+        };
+    }
+
+    /**
+     * Sin cliente, vendedor ni tipo de producto no hay nada que costear ni cotizar.
      */
     #[Computed]
     public function bloqueado(): bool
     {
-        return $this->sinCliente || $this->tipo_producto === '';
+        return $this->faltaElegir !== null || $this->tipo_producto === '';
     }
 
     /**
@@ -179,13 +205,18 @@ class Form extends Component
     /**
      * Alta al vuelo de una manga o de un producto del cliente.
      */
-    public function abrirAlta(string $catalogo): void
+    public function abrirAlta(string $catalogo, ?string $campo = null): void
     {
         if ($catalogo !== 'producto' && ! isset(self::AJUSTES_AL_VUELO[$catalogo])) {
             return;
         }
 
+        // Un mismo grupo puede alimentar varios campos (mangas: desarrollo y
+        // mangas disponibles): el alta completa el que la abrio.
+        $campo ??= self::AJUSTES_AL_VUELO[$catalogo] ?? null;
+
         $this->creando = $catalogo;
+        $this->campoAlta = array_key_exists($campo, $this->bobinas) ? $campo : self::AJUSTES_AL_VUELO[$catalogo] ?? null;
         $this->nuevoValor = '';
         $this->resetValidation('nuevoValor');
     }
@@ -193,6 +224,7 @@ class Form extends Component
     public function cancelarAlta(): void
     {
         $this->creando = null;
+        $this->campoAlta = null;
         $this->nuevoValor = '';
         $this->resetValidation('nuevoValor');
     }
@@ -228,7 +260,7 @@ class Form extends Component
         Ajuste::firstOrCreate(['grupo' => $grupo, 'valor' => $valor]);
 
         // Mismo formato que las opciones del select para que quede seleccionado.
-        $this->bobinas[self::AJUSTES_AL_VUELO[$grupo]] = (string) $valor;
+        $this->bobinas[$this->campoAlta ?? self::AJUSTES_AL_VUELO[$grupo]] = (string) $valor;
 
         $this->cancelarAlta();
     }
@@ -313,8 +345,13 @@ class Form extends Component
     /**
      * El ancho refilado y el de lamina se calculan solos.
      */
-    public function updatedBobinas(mixed $valor, string $clave): void
+    public function updatedBobinas(mixed $valor, ?string $clave = null): void
     {
+        // Livewire manda la clave null cuando se reemplaza el arreglo entero.
+        if ($clave === null) {
+            return;
+        }
+
         if (in_array($clave, ['ancho', 'modulos_ancho'], true)) {
             $this->recalcularAnchos();
         }
@@ -327,6 +364,77 @@ class Form extends Component
 
             $this->bobinas['materiales'][$indice]['proveedor_id'] = (string) ($elegido ?? '');
         }
+
+        if ($clave === 'cantidad' || preg_match('/^materiales\.\d+\.material_id$/', $clave)) {
+            $this->recalcularPeso();
+        }
+    }
+
+    /**
+     * Kilos que pesan 1000 metros de cada material cargado.
+     *
+     * @return array<int, float>
+     */
+    #[Computed]
+    public function kgrsPorMilMetros(): array
+    {
+        $items = InsumoItem::findMany(
+            collect($this->bobinas['materiales'] ?? [])->pluck('material_id')->filter()->all()
+        )->keyBy('id');
+
+        $kgrs = [];
+
+        foreach ($this->bobinas['materiales'] ?? [] as $indice => $material) {
+            $peso = ($items[$material['material_id'] ?? null] ?? null)?->kgrsPorMilMetros();
+
+            if ($peso !== null) {
+                $kgrs[$indice] = $peso;
+            }
+        }
+
+        return $kgrs;
+    }
+
+    /**
+     * Por que el peso todavia no se puede calcular, si es que no se puede.
+     */
+    public function ayudaPeso(): ?string
+    {
+        if (($this->bobinas['peso'] ?? '') !== '') {
+            return null;
+        }
+
+        $faltan = [];
+
+        if ((float) ($this->bobinas['cantidad'] ?: 0) <= 0) {
+            $faltan[] = 'Cantidad (mts)';
+        }
+
+        $elegidos = collect($this->bobinas['materiales'] ?? [])->filter(fn (array $material) => ! empty($material['material_id']));
+
+        if ($elegidos->isEmpty()) {
+            $faltan[] = 'el material';
+        } elseif ($this->kgrsPorMilMetros === []) {
+            $faltan[] = 'el peso esp. del material en Insumos';
+        }
+
+        return $faltan === [] ? null : 'Falta completar: '.implode(', ', $faltan).'.';
+    }
+
+    /**
+     * Peso (kg) = suma de los kilos por 1000 metros de cada material, por la
+     * cantidad en metros dividida 1000.
+     */
+    private function recalcularPeso(): void
+    {
+        unset($this->kgrsPorMilMetros);
+
+        $cantidad = (float) ($this->bobinas['cantidad'] ?: 0);
+        $kgrs = array_sum($this->kgrsPorMilMetros);
+
+        $this->bobinas['peso'] = $cantidad > 0 && $kgrs > 0
+            ? number_format($kgrs * $cantidad / 1000, 2, '.', '')
+            : '';
     }
 
     /**
@@ -450,9 +558,10 @@ class Form extends Component
     /**
      * Cambiar la zona de una entrega invalida la direccion que tenia elegida.
      */
-    public function updatedEntregas(mixed $valor, string $clave): void
+    public function updatedEntregas(mixed $valor, ?string $clave = null): void
     {
-        if (! str_ends_with($clave, '.flete_zona_id')) {
+        // Livewire manda la clave null cuando se reemplaza el arreglo entero.
+        if ($clave === null || ! str_ends_with($clave, '.flete_zona_id')) {
             return;
         }
 
