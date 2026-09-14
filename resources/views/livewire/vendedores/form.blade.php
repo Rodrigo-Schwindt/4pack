@@ -22,12 +22,6 @@
                 </div>
 
                 <div class="flex flex-col gap-1.5">
-                    <label for="comision" class="text-sm text-slate-600">Comisión (%)</label>
-                    <input id="comision" type="number" step="0.01" min="0" max="100" wire:model="comision" placeholder="0" class="{{ $campo }}" />
-                    @error('comision') <p class="text-sm text-red-600">{{ $message }}</p> @enderror
-                </div>
-
-                <div class="flex flex-col gap-1.5">
                     <label for="activo" class="text-sm text-slate-600">Estado</label>
                     <select id="activo" wire:model="activo" class="{{ $campo }}">
                         <option value="1">Activo</option>
@@ -35,6 +29,21 @@
                     </select>
                     @error('activo') <p class="text-sm text-red-600">{{ $message }}</p> @enderror
                 </div>
+            </div>
+        </section>
+
+        <section class="mt-4 rounded-lg bg-white p-6 shadow-sm">
+            <h2 class="mb-1 font-[Inter,_sans-serif] text-[16px] leading-[normal] font-medium text-black">Comisión por tipo de producto</h2>
+            <p class="mb-6 text-sm text-slate-500">Porcentaje que cobra el vendedor según lo que se cotiza.</p>
+
+            <div class="grid gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-4">
+                @foreach ($comisionesEtiquetas as $columna => $etiqueta)
+                    <div class="flex flex-col gap-1.5">
+                        <label for="{{ $columna }}" class="text-sm text-slate-600">{{ $etiqueta }} (%)</label>
+                        <input id="{{ $columna }}" type="number" step="0.01" min="0" max="100" wire:model="comisiones.{{ $columna }}" placeholder="0" class="{{ $campo }}" />
+                        @error('comisiones.'.$columna) <p class="text-sm text-red-600">{{ $message }}</p> @enderror
+                    </div>
+                @endforeach
             </div>
         </section>
 

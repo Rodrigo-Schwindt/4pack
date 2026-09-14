@@ -11,7 +11,11 @@ use Illuminate\Database\Seeder;
 class AjustesSeeder extends Seeder
 {
     private const VALORES = [
-        'mangas' => [35, 36, 38, 40, 42, 44, 45, 47, 48, 50, 52, 54, 56, 58, 60, 64, 66, 70],
+        // Las de la captura mas las de la planilla: PE de 30 a 220 de a 5 (Tabla!A36:E74) y PET 12 y 14.
+        'mangas' => [
+            12, 14, 30, 35, 36, 38, 40, 42, 44, 45, 47, 48, 50, 52, 54, 55, 56, 58, 60, 64, 65, 66, 70, 75, 80, 85, 90, 95, 100,
+            105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 155, 160, 165, 170, 175, 180, 185, 190, 195, 200, 205, 210, 215, 220,
+        ],
         'bujes' => [3, 6],
     ];
 

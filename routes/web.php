@@ -6,7 +6,9 @@ use App\Livewire\Cotizaciones;
 use App\Livewire\Dashboard;
 use App\Livewire\Fletes;
 use App\Livewire\Insumos;
+use App\Livewire\Operativos;
 use App\Livewire\Prospectos;
+use App\Livewire\VariablesCostos;
 use App\Livewire\Vendedores;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
@@ -26,13 +28,16 @@ Route::middleware(['auth'])->group(function () {
     Route::get('clientes/create', Clientes\Form::class)->name('clientes.create');
     Route::get('clientes/{contacto}/edit', Clientes\Form::class)->name('clientes.edit');
 
-    // Listado estatico hasta que exista el modulo de cotizaciones.
     Route::get('cotizaciones', Cotizaciones\Index::class)->name('cotizaciones.index');
     Route::get('cotizaciones/create', Cotizaciones\Form::class)->name('cotizaciones.create');
+    Route::get('cotizaciones/{guardada}/edit', Cotizaciones\Form::class)->name('cotizaciones.edit');
 
     Route::get('configuracion', Configuracion\Index::class)->name('configuracion');
     Route::get('configuracion/ajustes', Configuracion\Ajustes::class)->name('configuracion.ajustes');
     Route::get('flete-insumos', Fletes\Index::class)->name('fletes.index');
+
+    Route::get('operativos', Operativos\Index::class)->name('operativos.index');
+    Route::get('variables-costos', VariablesCostos\Index::class)->name('variables-costos.index');
 
     Route::get('insumos', Insumos\Index::class)->name('insumos.index');
     Route::get('insumos/{insumo}', Insumos\Detalle::class)->name('insumos.detalle');

@@ -31,6 +31,14 @@ class Detalle extends Component
      */
     public array $fila = [];
 
+    /**
+     * Toneladas desde las que rige el precio por volumen, por familia. Se
+     * guarda apenas se cambia.
+     *
+     * @var array<int, string>
+     */
+    public array $volumenDesde = [];
+
     public bool $creandoFamilia = false;
 
     public string $familiaNombre = '';
@@ -63,6 +71,8 @@ class Detalle extends Component
         $this->insumo = $insumo;
 
         foreach ($this->familias() as $familia) {
+            $this->volumenDesde[$familia->id] = $this->comoTexto($familia->volumen_desde_tn);
+
             if ($primero = $familia->proveedores->first()) {
                 $this->expandir($familia->id, $primero->id);
             }
@@ -85,12 +95,33 @@ class Detalle extends Component
             $this->fila[$this->clave($item->id, $proveedorId)] = [
                 'costo' => $this->comoTexto($precio?->costo),
                 'peso_especifico' => $this->comoTexto($item->peso_especifico),
-                'costo_mas_1tn' => $this->comoTexto($precio?->costo_mas_1tn),
+                'costo_volumen' => $this->comoTexto($precio?->costo_volumen),
                 'flete' => (int) (bool) $precio?->flete,
                 'donde' => (string) $precio?->donde,
                 'costo_flete' => $this->comoTexto($precio?->costo_flete),
             ];
         }
+    }
+
+    /**
+     * Umbral del precio por volumen: si lo que se escribe no sirve, vuelve al guardado.
+     */
+    public function updatedVolumenDesde(mixed $valor, string $familiaId): void
+    {
+        $familia = $this->insumo->familias()->findOrFail((int) $familiaId);
+
+        $this->resetErrorBag('volumenDesde.'.$familiaId);
+
+        if (! is_numeric($valor) || (float) $valor <= 0 || (float) $valor > 99999) {
+            $this->addError('volumenDesde.'.$familiaId, 'Las toneladas tienen que ser un número mayor a cero.');
+            $this->volumenDesde[$familia->id] = $this->comoTexto($familia->volumen_desde_tn);
+
+            return;
+        }
+
+        $familia->update(['volumen_desde_tn' => (float) $valor]);
+
+        $this->volumenDesde[$familia->id] = $this->comoTexto($familia->fresh()->volumen_desde_tn);
     }
 
     public function colapsar(int $familiaId): void
@@ -135,7 +166,7 @@ class Detalle extends Component
                 ['insumo_item_id' => $item->id, 'proveedor_id' => $proveedorId],
                 [
                     'costo' => $datos['costo'],
-                    'costo_mas_1tn' => $datos['costo_mas_1tn'] !== '' ? $datos['costo_mas_1tn'] : null,
+                    'costo_volumen' => $datos['costo_volumen'] !== '' ? $datos['costo_volumen'] : null,
                     'flete' => $flete,
                     'donde' => $flete && $datos['donde'] !== '' ? $datos['donde'] : null,
                     'costo_flete' => $flete && $datos['costo_flete'] !== '' ? $datos['costo_flete'] : null,
@@ -174,8 +205,9 @@ class Detalle extends Component
             ],
         ], attributes: ['familiaNombre' => 'nombre']);
 
-        $this->insumo->familias()->create(['nombre' => trim($this->familiaNombre)]);
+        $familia = $this->insumo->familias()->create(['nombre' => trim($this->familiaNombre)]);
 
+        $this->volumenDesde[$familia->id] = $this->comoTexto($familia->volumen_desde_tn);
         $this->creandoFamilia = false;
         $this->familiaNombre = '';
     }
@@ -363,7 +395,7 @@ class Detalle extends Component
 
             $reglas[$clave.'.costo'] = ['nullable', 'numeric', 'min:0'];
             $reglas[$clave.'.peso_especifico'] = ['nullable', 'numeric', 'min:0'];
-            $reglas[$clave.'.costo_mas_1tn'] = ['nullable', 'numeric', 'min:0'];
+            $reglas[$clave.'.costo_volumen'] = ['nullable', 'numeric', 'min:0'];
             $reglas[$clave.'.costo_flete'] = ['nullable', 'numeric', 'min:0'];
             $reglas[$clave.'.donde'] = ['nullable', 'string', 'max:255'];
         }

@@ -25,8 +25,12 @@
         </div>
     </div>
 
+    @if (session('status'))
+        <p class="mb-4 text-sm font-medium text-green-600">{{ session('status') }}</p>
+    @endif
+
     <div class="overflow-hidden rounded-lg bg-white shadow-sm">
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto scroll-sutil">
             <table class="w-full min-w-[860px] text-left">
                 <thead>
                     <tr class="border-b border-slate-100 text-[11px] tracking-wide text-slate-500 uppercase">
@@ -46,14 +50,36 @@
                             <td class="px-6 py-4 text-sm text-slate-600">{{ $cotizacion['cliente'] }}</td>
                             <td class="px-6 py-4 text-sm text-slate-600">{{ $cotizacion['vendedor'] }}</td>
                             <td class="px-6 py-4">
-                                <span class="rounded-md px-3 py-1 text-xs font-medium {{ $cotizacion['estado'] === 'Finalizado' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600' }}">
-                                    {{ $cotizacion['estado'] }}
-                                </span>
-                            </td>
-                            <td class="px-6 py-4 text-right">
-                                <button type="button" disabled title="Próximamente" aria-label="Ver cotización {{ $cotizacion['numero'] }}" class="cursor-default text-slate-400">
-                                    <x-icon name="chevron-right" class="h-5 w-5" />
+                                {{-- Clic para pasar de pendiente a finalizada y viceversa. --}}
+                                <button
+                                    type="button"
+                                    wire:click="cambiarEstado({{ $cotizacion['id'] }})"
+                                    title="Cambiar estado"
+                                    class="rounded-md px-3 py-1 text-xs font-medium {{ match ($cotizacion['estado']) { 'aprobada' => 'bg-green-100 text-green-700 hover:bg-green-200', 'finalizada' => 'bg-slate-100 text-slate-600 hover:bg-slate-200', default => 'bg-red-100 text-red-600 hover:bg-red-200' } }}"
+                                >
+                                    {{ $cotizacion['estado_nombre'] }}
                                 </button>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="flex items-center justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        wire:click="eliminar({{ $cotizacion['id'] }})"
+                                        wire:confirm="¿Eliminar la cotización {{ $cotizacion['numero'] }}?"
+                                        aria-label="Eliminar cotización {{ $cotizacion['numero'] }}"
+                                        class="text-slate-400 hover:text-red-600"
+                                    >
+                                        <x-icon name="trash-2" class="h-4 w-4" />
+                                    </button>
+                                    <a
+                                        href="{{ route('cotizaciones.edit', $cotizacion['id']) }}"
+                                        wire:navigate
+                                        aria-label="Abrir cotización {{ $cotizacion['numero'] }}"
+                                        class="text-slate-400 hover:text-[#1c5480]"
+                                    >
+                                        <x-icon name="chevron-right" class="h-5 w-5" />
+                                    </a>
+                                </div>
                             </td>
                         </tr>
                     @endforeach
@@ -61,7 +87,7 @@
                     @if ($cotizaciones->isEmpty())
                         <tr>
                             <td colspan="6" class="px-6 py-10 text-center text-sm text-slate-400">
-                                No hay cotizaciones que coincidan con la búsqueda.
+                                {{ $buscando ? 'No hay cotizaciones que coincidan con la búsqueda.' : 'Todavía no hay cotizaciones. Creá la primera con "Nueva Cotización".' }}
                             </td>
                         </tr>
                     @endif

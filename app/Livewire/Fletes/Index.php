@@ -6,6 +6,7 @@ use App\Models\Ajuste;
 use App\Models\FletePrecio;
 use App\Models\FleteTramo;
 use App\Models\FleteZona;
+use App\Services\DolarOficial;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -21,6 +22,9 @@ class Index extends Component
     public string $buscar = '';
 
     public string $dolar = '';
+
+    /** Si el dolar se toma solo de la cotizacion oficial (BNA) en vez de cargarse a mano. */
+    public bool $dolarAutomatico = false;
 
     /** Zona en edicion; 0 mientras se carga una nueva. */
     public ?int $editando = null;
@@ -39,6 +43,34 @@ class Index extends Component
     public function mount(): void
     {
         $this->dolar = $this->comoTexto(Ajuste::valorDe(self::GRUPO_DOLAR));
+        $this->dolarAutomatico = DolarOficial::automatico();
+    }
+
+    /**
+     * Al pasar a automatico se trae la cotizacion en el momento; si la API no
+     * responde queda el valor que habia y se avisa.
+     */
+    public function updatedDolarAutomatico(): void
+    {
+        DolarOficial::definirAutomatico($this->dolarAutomatico);
+
+        if ($this->dolarAutomatico) {
+            $this->actualizarDolar();
+        }
+    }
+
+    public function actualizarDolar(): void
+    {
+        $valor = app(DolarOficial::class)->actualizar();
+
+        if ($valor === null) {
+            $this->addError('dolar', 'No se pudo consultar la cotización oficial. Se mantiene el valor cargado.');
+
+            return;
+        }
+
+        $this->resetErrorBag('dolar');
+        $this->dolar = $this->comoTexto($valor);
     }
 
     public function updatedDolar(): void
@@ -178,6 +210,7 @@ class Index extends Component
             'pendientes' => FleteZona::doesntHave('precios')->orderBy('nombre')->get(['id', 'nombre']),
             'zonas' => $zonas,
             'cotizacion' => is_numeric($this->dolar) ? (float) $this->dolar : 0.0,
+            'dolarUltima' => DolarOficial::ultima(),
         ]);
     }
 }

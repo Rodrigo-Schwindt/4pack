@@ -107,3 +107,37 @@ input[type='number'] {
     -moz-appearance: textfield;
     appearance: textfield;
 }
+
+/*
+ * Scroll horizontal de las tablas anchas: una barra fina y clara que se
+ * marca un poco mas al pasar el mouse, en vez de la barra gris del sistema.
+ */
+.scroll-sutil {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-slate-300) transparent;
+}
+
+.scroll-sutil:hover {
+    scrollbar-color: var(--color-slate-400) transparent;
+}
+
+.scroll-sutil::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+}
+
+.scroll-sutil::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 0 8px;
+}
+
+.scroll-sutil::-webkit-scrollbar-thumb {
+    background-color: var(--color-slate-300);
+    border-radius: 9999px;
+    border: 2px solid var(--color-white);
+    background-clip: padding-box;
+}
+
+.scroll-sutil:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-slate-400);
+}

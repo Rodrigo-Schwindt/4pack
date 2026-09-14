@@ -65,15 +65,15 @@
         </div>
 
         <div class="flex flex-col gap-5">
-            <x-campo.texto label="Impresión Scrap (cm)" modelo="bobinas.impresion_scrap" :deshabilitado="$trabado" />
-            <x-campo.texto label="Laminación Scrap (cm)" modelo="bobinas.laminacion_scrap" :deshabilitado="$trabado" />
-            <x-campo.texto label="Bilaminación Scrap (cm)" modelo="bobinas.bilaminacion_scrap" :deshabilitado="$trabado" />
+            <x-campo.texto label="Impresión Scrap (cm)" modelo="bobinas.impresion_scrap" tipo="number" paso="0.01" modificador="live.blur" :deshabilitado="$trabado" />
+            <x-campo.texto label="Laminación Scrap (cm)" modelo="bobinas.laminacion_scrap" tipo="number" paso="0.01" modificador="live.blur" :deshabilitado="$trabado" />
+            <x-campo.texto label="Bilaminación Scrap (cm)" modelo="bobinas.bilaminacion_scrap" tipo="number" paso="0.01" modificador="live.blur" :deshabilitado="$trabado" />
         </div>
 
         <div class="flex flex-col gap-5">
-            <x-campo.texto label="U$S" modelo="bobinas.impresion_scrap_usd" calculado />
-            <x-campo.texto label="U$S" modelo="bobinas.laminacion_scrap_usd" calculado />
-            <x-campo.texto label="U$S" modelo="bobinas.bilaminacion_scrap_usd" calculado />
+            <x-campo.texto label="U$S" modelo="bobinas.impresion_scrap_usd" calculado :ayuda="$trabado ? null : $this->ayudaScrap('impresion_scrap')" />
+            <x-campo.texto label="U$S" modelo="bobinas.laminacion_scrap_usd" calculado :ayuda="$trabado ? null : $this->ayudaScrap('laminacion_scrap')" />
+            <x-campo.texto label="U$S" modelo="bobinas.bilaminacion_scrap_usd" calculado :ayuda="$trabado ? null : $this->ayudaScrap('bilaminacion_scrap')" />
         </div>
 
         <x-campo.ajuste label="Mangas disponibles (cm)" grupo="mangas" modelo="bobinas.mangas" :opciones="$mangas" :creando="$creando" :campo-alta="$campoAlta" :deshabilitado="$trabado" />

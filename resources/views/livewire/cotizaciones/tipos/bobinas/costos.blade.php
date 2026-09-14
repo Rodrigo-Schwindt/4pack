@@ -1,8 +1,6 @@
 @php
-    use App\Livewire\Cotizaciones\MaquetaBobinas;
-
-    $rentabilidad = MaquetaBobinas::rentabilidad();
-    $costoFinal = MaquetaBobinas::costoFinal();
+    $rentabilidad = $this->rentabilidad;
+    $costoFinal = $this->costoFinal;
 
     // Alto fijo de fila para que los tres bloques de rentabilidad queden alineados.
     $fila = 'flex h-[47px] items-center px-3 text-sm';
@@ -10,19 +8,33 @@
 @endphp
 
 <section class="rounded-lg bg-white shadow-sm">
-    @foreach (MaquetaBobinas::secciones() as $indice => $seccion)
-        <x-tabla-costos
-            :titulo="$seccion['titulo']"
-            :columnas="$seccion['columnas']"
-            :filas="$seccion['filas']"
-            class="{{ $indice === 0 ? 'pt-5' : '' }}"
-        />
+    @php
+        $secciones = [
+            $this->seccionProveedores,
+            $this->seccionImpresion,
+            $this->seccionLaminacion,
+            $this->seccionRefilado,
+            $this->seccionOtrosCostos,
+        ];
+    @endphp
+
+    @foreach ($secciones as $indice => $seccion)
+        <x-tabla-costos :titulo="$seccion['titulo']" :columnas="$seccion['columnas']" :filas="$seccion['filas']" class="{{ $indice === 0 ? 'pt-5' : '' }}" />
     @endforeach
 
     <h2 class="px-6 pt-8 pb-5 text-[16px] leading-[normal] font-medium text-black">Rentabilidad, financiado y costo bruto</h2>
     <hr class="border-slate-100" />
 
-    <div class="overflow-x-auto px-6 py-6">
+    {{-- El costo bruto suma los bloques que ya se calculan: falta tela, tintas, laminacion y solventes. --}}
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-1 px-6 pt-4 text-xs text-slate-500">
+        <span>Estructura: <span class="font-medium text-slate-700">{{ $rentabilidad['estructura'] ?? '-' }}</span></span>
+        <span>Valor por kg al contado: <span class="font-medium text-slate-700">{{ $rentabilidad['contado'] }}</span></span>
+        @if ($rentabilidad['sin_margen'])
+            <span class="text-amber-700">La estructura "{{ $rentabilidad['estructura'] }}" no tiene margen cargado en Variables Costos.</span>
+        @endif
+    </div>
+
+    <div class="overflow-x-auto scroll-sutil px-6 py-6">
         <div class="flex min-w-[860px] items-start gap-4">
             {{-- Porcentaje suelto a la izquierda, fuera del recuadro. --}}
             <div class="w-[70px] shrink-0 pt-[56px]">

@@ -9,7 +9,7 @@ class ContactoDireccion extends Model
 {
     protected $table = 'contacto_direcciones';
 
-    protected $fillable = ['contacto_id', 'flete_zona_id', 'direccion', 'codigo_postal'];
+    protected $fillable = ['contacto_id', 'flete_zona_id', 'direccion', 'codigo_postal', 'observaciones'];
 
     public function contacto(): BelongsTo
     {

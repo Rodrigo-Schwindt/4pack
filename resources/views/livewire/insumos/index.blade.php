@@ -39,7 +39,7 @@
             />
         </div>
 
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto scroll-sutil">
             <table class="w-full min-w-[560px] text-left">
                 <thead>
                     <tr class="bg-slate-50 text-[11px] tracking-wide text-slate-500 uppercase">

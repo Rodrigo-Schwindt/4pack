@@ -29,7 +29,7 @@ class DatabaseSeeder extends Seeder
 
     public function run(): void
     {
-        $this->call([AjustesSeeder::class, FleteInsumosSeeder::class, InsumosSeeder::class]);
+        $this->call([AjustesSeeder::class, FleteInsumosSeeder::class, InsumosSeeder::class, OperativosSeeder::class, VariablesCostosSeeder::class]);
 
         if (! is_file(self::DUMP)) {
             $this->command->warn('No se encontró '.realpath(dirname(self::DUMP)).'/4pack-backup.sql, no hay datos para importar.');

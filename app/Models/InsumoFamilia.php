@@ -11,7 +11,18 @@ class InsumoFamilia extends Model
 {
     protected $table = 'insumo_familias';
 
-    protected $fillable = ['insumo_id', 'nombre'];
+    protected $fillable = ['insumo_id', 'nombre', 'volumen_desde_tn'];
+
+    protected function casts(): array
+    {
+        return ['volumen_desde_tn' => 'decimal:3'];
+    }
+
+    /** Kilos a partir de los cuales rige el precio por volumen. */
+    public function kilosVolumen(): float
+    {
+        return (float) $this->volumen_desde_tn * 1000;
+    }
 
     public function insumo(): BelongsTo
     {

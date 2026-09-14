@@ -23,12 +23,15 @@
             </a>
         </div>
 
-        <div class="overflow-x-auto">
-            <table class="w-full min-w-[640px] text-left">
+        <div class="overflow-x-auto scroll-sutil">
+            <table class="w-full min-w-[860px] text-left">
                 <thead>
                     <tr class="border-b border-slate-100 text-[11px] tracking-wide text-slate-500 uppercase">
                         <th class="px-2 py-3 font-medium">Nombre</th>
-                        <th class="px-2 py-3 font-medium">Comisión</th>
+                        <th class="px-2 py-3 font-medium">Com. Bobinas</th>
+                        <th class="px-2 py-3 font-medium">Com. DPK</th>
+                        <th class="px-2 py-3 font-medium">Com. Pouch</th>
+                        <th class="px-2 py-3 font-medium">Com. 4 Costuras</th>
                         <th class="px-2 py-3 font-medium">Estado</th>
                         <th class="px-2 py-3"></th>
                     </tr>
@@ -37,7 +40,10 @@
                     @foreach ($vendedores as $vendedor)
                         <tr wire:key="vendedor-{{ $vendedor->id }}" class="border-b border-slate-100 last:border-0">
                             <td class="px-2 py-4 text-sm text-slate-800">{{ $vendedor->nombre }}</td>
-                            <td class="px-2 py-4 text-sm text-slate-600">{{ (float) $vendedor->comision }}</td>
+                            <td class="px-2 py-4 text-sm text-slate-600">{{ \App\Support\Numero::porcentaje($vendedor->comision_bobinas) }}</td>
+                            <td class="px-2 py-4 text-sm text-slate-600">{{ \App\Support\Numero::porcentaje($vendedor->comision_dpk) }}</td>
+                            <td class="px-2 py-4 text-sm text-slate-600">{{ \App\Support\Numero::porcentaje($vendedor->comision_pouch) }}</td>
+                            <td class="px-2 py-4 text-sm text-slate-600">{{ \App\Support\Numero::porcentaje($vendedor->comision_4_costuras) }}</td>
                             <td class="px-2 py-4">
                                 <span class="rounded px-2 py-0.5 text-[11px] font-medium {{ $vendedor->activo ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500' }}">
                                     {{ $vendedor->activo ? 'Activo' : 'Inactivo' }}
@@ -69,7 +75,7 @@
 
                     @if ($vendedores->isEmpty())
                         <tr>
-                            <td colspan="4" class="px-2 py-10 text-center text-sm text-slate-400">
+                            <td colspan="7" class="px-2 py-10 text-center text-sm text-slate-400">
                                 Todavía no hay vendedores cargados.
                             </td>
                         </tr>

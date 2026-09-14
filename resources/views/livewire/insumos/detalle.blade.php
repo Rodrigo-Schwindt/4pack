@@ -1,6 +1,6 @@
 @php
     $campo = 'h-9 w-full rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-800 placeholder:text-slate-300 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none';
-    $usd = fn ($valor) => $valor === null || $valor === '' ? '-' : 'USD '.number_format((float) $valor, 2, ',', '.');
+    $usd = fn ($valor) => \App\Support\Numero::usd($valor);
     $celda = 'border-l border-slate-100 px-3 py-3 text-center text-sm';
     $subtitulo = 'border-l border-slate-100 px-3 py-2 text-center text-[10px] font-medium tracking-wide text-slate-500 uppercase';
 
@@ -9,7 +9,7 @@
     $anchos = [
         'costo' => 'min-w-[104px]',
         'peso_esp' => 'min-w-[104px]',
-        'mas1tn' => 'min-w-[112px]',
+        'volumen' => 'min-w-[128px]',
         'flete' => 'min-w-[92px]',
         'donde' => 'min-w-[132px]',
         'costo_flete' => 'min-w-[112px]',
@@ -140,6 +140,8 @@
                 </button>
             </div>
 
+            @error('volumenDesde.'.$familia->id) <p class="mb-3 text-xs text-red-600">{{ $message }}</p> @enderror
+
             @if ($agregandoProveedorEn === $familia->id)
                 <div class="mb-3 flex flex-wrap items-start gap-3 rounded-md border border-slate-200 bg-slate-50 p-3">
                     <div class="w-56">
@@ -171,7 +173,7 @@
                 </div>
             @endif
 
-            <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <div class="overflow-x-auto scroll-sutil rounded-lg border border-slate-200 bg-white">
                 <table class="w-full min-w-[900px] border-collapse text-left">
                     <thead>
                         <tr class="bg-slate-50/80">
@@ -248,7 +250,22 @@
                                 @if ($abierto === $proveedor->id)
                                     <th class="{{ $subtitulo }} {{ $anchos['costo'] }}">Costo</th>
                                     <th class="{{ $subtitulo }} {{ $anchos['peso_esp'] }}" title="Dato del material: vale para todos sus proveedores">Peso esp.</th>
-                                    <th class="{{ $subtitulo }} {{ $anchos['mas1tn'] }}">Más de 1TN</th>
+                                    {{-- El umbral en toneladas es de la familia y se guarda al salir del campo. --}}
+                                    <th class="{{ $subtitulo }} {{ $anchos['volumen'] }}" title="Precio que rige desde esta cantidad de toneladas">
+                                        <span class="flex items-center justify-center gap-1 whitespace-nowrap">
+                                            Más de
+                                            <input
+                                                type="number"
+                                                step="any"
+                                                min="0.001"
+                                                wire:model.blur="volumenDesde.{{ $familia->id }}"
+                                                wire:keydown.enter.prevent="$refresh"
+                                                aria-label="Toneladas desde las que rige el precio por volumen en {{ $familia->nombre }}"
+                                                class="h-6 w-12 rounded border border-slate-200 bg-white px-1 text-center text-[11px] text-slate-800 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none {{ $errors->has('volumenDesde.'.$familia->id) ? 'border-red-400' : '' }}"
+                                            />
+                                            TN
+                                        </span>
+                                    </th>
                                     <th class="{{ $subtitulo }} {{ $anchos['flete'] }}">Flete</th>
                                     <th class="{{ $subtitulo }} {{ $anchos['donde'] }}">Dónde</th>
                                     <th class="{{ $subtitulo }} {{ $anchos['costo_flete'] }}">Costo flete</th>
@@ -320,7 +337,7 @@
 
                                     @if ($abierto === $proveedor->id)
                                         @php
-                                            $datos = $fila[$item->id.'_'.$proveedor->id] ?? ['costo' => '', 'costo_mas_1tn' => '', 'flete' => 0, 'donde' => '', 'costo_flete' => ''];
+                                            $datos = $fila[$item->id.'_'.$proveedor->id] ?? ['costo' => '', 'costo_volumen' => '', 'flete' => 0, 'donde' => '', 'costo_flete' => ''];
                                             $conFlete = (int) $datos['flete'] === 1;
                                             $total = $datos['costo'] === '' || ! is_numeric($datos['costo'])
                                                 ? null
@@ -333,8 +350,8 @@
                                         <td class="{{ $celda }} {{ $anchos['peso_esp'] }}">
                                             <input type="number" step="any" min="0" wire:model.live="fila.{{ $item->id }}_{{ $proveedor->id }}.peso_especifico" placeholder="-" title="Peso específico del material: vale para todos sus proveedores" aria-label="Peso específico {{ $item->nombre }}" class="{{ $campo }} text-center" />
                                         </td>
-                                        <td class="{{ $celda }} {{ $anchos['mas1tn'] }}">
-                                            <input type="number" step="0.0001" min="0" wire:model="fila.{{ $item->id }}_{{ $proveedor->id }}.costo_mas_1tn" placeholder="-" aria-label="Más de 1TN {{ $item->nombre }} {{ $proveedor->nombre }}" class="{{ $campo }} text-center" />
+                                        <td class="{{ $celda }} {{ $anchos['volumen'] }}">
+                                            <input type="number" step="0.0001" min="0" wire:model="fila.{{ $item->id }}_{{ $proveedor->id }}.costo_volumen" placeholder="-" aria-label="Precio por volumen {{ $item->nombre }} {{ $proveedor->nombre }}" class="{{ $campo }} text-center" />
                                         </td>
                                         <td class="{{ $celda }} {{ $anchos['flete'] }}">
                                             <select wire:model.live="fila.{{ $item->id }}_{{ $proveedor->id }}.flete" aria-label="Flete {{ $item->nombre }} {{ $proveedor->nombre }}" class="{{ $campo }} pr-1">

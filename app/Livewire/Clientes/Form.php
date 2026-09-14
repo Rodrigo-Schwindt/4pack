@@ -15,7 +15,7 @@ class Form extends Formulario
      * Direcciones de entrega en pantalla. Se guardan junto con el cliente, asi
      * tambien se pueden cargar durante el alta, cuando todavia no tiene id.
      *
-     * @var list<array{id: ?int, flete_zona_id: ?string, direccion: string, codigo_postal: string}>
+     * @var list<array{id: ?int, flete_zona_id: ?string, direccion: string, codigo_postal: string, observaciones: string}>
      */
     public array $direcciones = [];
 
@@ -47,6 +47,7 @@ class Form extends Formulario
                 'flete_zona_id' => (string) $direccion->flete_zona_id,
                 'direccion' => $direccion->direccion,
                 'codigo_postal' => (string) $direccion->codigo_postal,
+                'observaciones' => (string) $direccion->observaciones,
             ])->all()
             : [];
     }
@@ -63,7 +64,7 @@ class Form extends Formulario
 
     public function nuevaDireccion(): void
     {
-        $this->direcciones[] = ['id' => null, 'flete_zona_id' => '', 'direccion' => '', 'codigo_postal' => ''];
+        $this->direcciones[] = ['id' => null, 'flete_zona_id' => '', 'direccion' => '', 'codigo_postal' => '', 'observaciones' => ''];
 
         $this->editandoDireccion = array_key_last($this->direcciones);
     }
@@ -149,6 +150,7 @@ class Form extends Formulario
             'direcciones.*.flete_zona_id' => ['nullable', 'exists:flete_zonas,id'],
             'direcciones.*.direccion' => ['required', 'string', 'max:255'],
             'direcciones.*.codigo_postal' => ['nullable', 'string', 'max:20'],
+            'direcciones.*.observaciones' => ['nullable', 'string', 'max:1000'],
         ];
     }
 
@@ -163,6 +165,7 @@ class Form extends Formulario
                 'flete_zona_id' => $fila['flete_zona_id'] ?: null,
                 'direccion' => trim($fila['direccion']),
                 'codigo_postal' => $fila['codigo_postal'] !== '' ? $fila['codigo_postal'] : null,
+                'observaciones' => trim($fila['observaciones'] ?? '') !== '' ? trim($fila['observaciones']) : null,
             ];
 
             if ($fila['id']) {
@@ -183,6 +186,7 @@ class Form extends Formulario
                 'direcciones.'.$indice.'.direccion' => 'dirección',
                 'direcciones.'.$indice.'.flete_zona_id' => 'zona',
                 'direcciones.'.$indice.'.codigo_postal' => 'código postal',
+                'direcciones.'.$indice.'.observaciones' => 'observaciones',
             ])
             ->all();
     }

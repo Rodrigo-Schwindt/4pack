@@ -2,6 +2,7 @@
     use App\Livewire\Cotizaciones\Form;
 
     $opciones = Form::OPCIONES;
+    $opciones['dias_ff'] = $diasFf ?: $opciones['dias_ff'];
     $campo = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none';
     $tituloSeccion = 'px-6 pt-8 pb-5 text-[16px] leading-[normal] font-medium text-black';
 
@@ -57,14 +58,23 @@
             </button>
             <button
                 type="button"
-                disabled
-                title="Próximamente"
-                class="flex h-10 cursor-default items-center rounded-md border border-[#1c5480] bg-white px-5 text-sm font-medium text-[#1c5480]"
+                wire:click="guardar"
+                wire:loading.attr="disabled"
+                class="flex h-10 items-center gap-2 rounded-md border border-[#1c5480] bg-white px-5 text-sm font-medium text-[#1c5480] hover:bg-slate-50 disabled:opacity-70"
             >
+                <x-icon name="loader-circle" class="h-4 w-4 animate-spin" wire:loading wire:target="guardar" />
                 Guardar
             </button>
         </div>
     </div>
+
+    @if (session('status'))
+        <p class="mb-4 text-sm font-medium text-green-600">{{ session('status') }}</p>
+    @endif
+
+    @if ($errors->hasAny(['cliente_id', 'vendedor_id', 'fecha']))
+        <p class="mb-4 text-sm text-red-600">Para guardar hace falta el cliente, el vendedor y la fecha.</p>
+    @endif
 
     @if ($solapa !== 'datos')
         @if ($solapa === 'costos' && $tipo_producto === 'bobinas')
@@ -91,12 +101,12 @@
             {{-- Live: el cliente decide si se puede elegir el tipo y que productos se listan. --}}
             <x-campo.select label="Cliente" modelo="cliente_id" :opciones="$clientes->pluck('razon_social', 'id')" live requerido />
             <x-campo.select label="Categoría" modelo="categoria" :opciones="Form::OPCIONES['categorias']" />
-            <x-campo.texto label="Ajuste" modelo="ajuste_categoria" tipo="number" paso="0.01" modificador="live.blur" />
+            <x-campo.texto label="Descuento" modelo="ajuste_categoria" tipo="number" paso="0.01" modificador="live.blur" />
 
-            {{-- Vendedor y su ajuste comparten la cuarta columna. --}}
+            {{-- Vendedor y su comisión extra comparten la cuarta columna. --}}
             <div class="flex items-end gap-3">
                 <x-campo.select label="Vendedor" modelo="vendedor_id" :opciones="$vendedores->pluck('nombre', 'id')" live requerido class="flex-1" />
-                <x-campo.texto label="Ajuste" modelo="ajuste_vendedor" tipo="number" paso="0.01" modificador="live.blur" class="w-[88px] shrink-0" />
+                <x-campo.texto label="Comisión" modelo="ajuste_vendedor" tipo="number" paso="0.01" modificador="live.blur" class="w-[88px] shrink-0" />
             </div>
 
             <div class="flex flex-col gap-1.5">
@@ -131,6 +141,9 @@
             />
 
             @if ($tipo_producto === 'bobinas' && ! $falta)
+                {{-- Cuantas laminas lleva el producto: define cuantos materiales se cargan. --}}
+                <x-campo.select label="Laminado" modelo="bobinas.laminado" :opciones="Form::LAMINADOS" vacio="" live requerido />
+
                 @include('livewire.cotizaciones.tipos.bobinas.identificacion')
             @endif
         </div>

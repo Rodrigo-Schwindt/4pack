@@ -6,7 +6,7 @@
     <hr class="border-slate-100" />
 @endif
 
-<div class="overflow-x-auto px-6 py-6">
+<div class="overflow-x-auto scroll-sutil px-6 py-6">
     <table class="w-full min-w-[860px]">
         <thead>
             <tr class="border-b border-slate-100 bg-slate-50/60 text-[11px] tracking-wide text-slate-500 uppercase">

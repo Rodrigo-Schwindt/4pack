@@ -1,7 +1,7 @@
 @php
     $campo = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none';
-    $pesos = fn ($valor) => '$'.number_format((float) $valor, 2, ',', '.');
-    $dolares = fn ($valor) => $cotizacion > 0 ? 'USD '.number_format((float) $valor / $cotizacion, 2, ',', '.') : 'USD -';
+    $pesos = fn ($valor) => \App\Support\Numero::pesos($valor);
+    $dolares = fn ($valor) => $cotizacion > 0 ? \App\Support\Numero::usd((float) $valor / $cotizacion) : 'USD -';
 @endphp
 
 <div class="mx-auto w-full max-w-[1224px]">
@@ -29,8 +29,25 @@
                         step="0.01"
                         min="0"
                         wire:model.live.debounce.500ms="dolar"
-                        class="h-10 w-28 rounded-md border border-slate-200 bg-white px-3 text-right text-sm text-slate-800 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none"
+                        @disabled($dolarAutomatico)
+                        class="h-10 w-28 rounded-md border border-slate-200 bg-white px-3 text-right text-sm text-slate-800 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
                     />
+                    {{-- Con el automatico prendido, el valor viene del dolar oficial (BNA) y se refresca solo. --}}
+                    <label class="flex h-10 cursor-pointer items-center gap-2 rounded-md border border-slate-200 px-3 text-sm text-slate-600 select-none">
+                        <input type="checkbox" wire:model.live="dolarAutomatico" class="h-4 w-4 rounded border-slate-300 text-[#1c5480] focus:ring-[#1c5480]" />
+                        Automático (BNA)
+                    </label>
+                    <button
+                        type="button"
+                        wire:click="actualizarDolar"
+                        wire:loading.attr="disabled"
+                        wire:target="actualizarDolar, dolarAutomatico"
+                        title="Traer la cotización oficial ahora"
+                        aria-label="Actualizar dólar"
+                        class="flex h-10 w-10 items-center justify-center rounded-md border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-[#1c5480] disabled:opacity-60"
+                    >
+                        <x-icon name="refresh-cw" class="h-4 w-4" wire:loading.class="animate-spin" wire:target="actualizarDolar, dolarAutomatico" />
+                    </button>
                 </div>
 
                 <button
@@ -54,6 +71,15 @@
         </div>
 
         @error('dolar') <p class="mb-4 text-sm text-red-600">{{ $message }}</p> @enderror
+
+        @if ($dolarUltima)
+            <p class="-mt-2 mb-4 text-right text-xs text-slate-400">
+                Oficial {{ $dolarUltima['fuente'] }}:
+                @if ($dolarUltima['compra'] !== null) compra {{ $pesos($dolarUltima['compra']) }} · @endif
+                venta {{ $pesos($dolarUltima['venta']) }}
+                · consultado el {{ $dolarUltima['consultado_en']->timezone('America/Argentina/Buenos_Aires')->format('d/m/Y H:i') }}
+            </p>
+        @endif
 
         @if ($mostrarTramos)
             <div class="mb-5 rounded-md border border-slate-200 bg-slate-50 p-4">
@@ -127,7 +153,7 @@
             />
         </div>
 
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto scroll-sutil">
             <table class="w-full min-w-[720px] text-left">
                 <thead>
                     <tr class="bg-slate-50 text-[11px] tracking-wide text-slate-500 uppercase">

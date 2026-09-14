@@ -23,8 +23,63 @@
                     {{ $titulo }}
                 </button>
             @endforeach
+
+            <hr class="my-2 border-slate-100" />
+
+            {{-- Constantes de las formulas de la cotizacion, un numero por clave. --}}
+            <button
+                type="button"
+                wire:click="seleccionar('variables')"
+                class="flex h-10 w-full items-center gap-2 rounded-md px-3 text-sm {{ $grupo === 'variables' ? 'bg-[#1c5480] font-medium text-white' : 'text-slate-600 hover:bg-slate-50' }}"
+            >
+                <x-icon name="settings" class="h-4 w-4" />
+                Variables de cálculo
+            </button>
         </nav>
 
+        @if ($grupo === 'variables')
+        <section class="rounded-lg bg-white p-6 shadow-sm">
+            <h2 class="font-[Inter,_sans-serif] text-[16px] leading-[normal] font-medium text-black">Variables de cálculo</h2>
+            <p class="mt-1 mb-6 text-xs text-slate-400">Constantes que usan las fórmulas de la cotización. Se guardan al salir del campo; el valor entre paréntesis es el de la planilla original.</p>
+
+            @foreach ($secciones as $seccion => $variables)
+                <h3 class="mt-6 mb-2 text-[11px] font-medium tracking-wide text-slate-500 uppercase first:mt-0">{{ $seccion }}</h3>
+
+                <div class="divide-y divide-slate-100 rounded-md border border-slate-100">
+                    @foreach ($variables as $clave => $variable)
+                        <div wire:key="variable-{{ $clave }}" class="flex flex-wrap items-center gap-3 px-4 py-2.5">
+                            <label for="variable-{{ $clave }}" class="flex-1 text-sm text-slate-700">
+                                {{ $variable['etiqueta'] }}
+                                <span class="text-xs text-slate-400">({{ \App\Support\Numero::corto($variable['defecto'], 4) }})</span>
+                            </label>
+
+                            <div class="flex items-center gap-2">
+                                <input
+                                    id="variable-{{ $clave }}"
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    wire:model.blur="variables.{{ $clave }}"
+                                    class="h-9 w-32 rounded-md border border-slate-200 bg-white px-3 text-right text-sm text-slate-800 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none"
+                                />
+                                <button
+                                    type="button"
+                                    wire:click="restaurar('{{ $clave }}')"
+                                    title="Volver al valor de la planilla"
+                                    aria-label="Restaurar {{ $variable['etiqueta'] }}"
+                                    class="text-slate-300 hover:text-[#1c5480]"
+                                >
+                                    <x-icon name="loader-circle" class="h-4 w-4" />
+                                </button>
+                            </div>
+
+                            @error('variables.'.$clave) <p class="w-full text-xs text-red-600">{{ $message }}</p> @enderror
+                        </div>
+                    @endforeach
+                </div>
+            @endforeach
+        </section>
+        @else
         <section class="rounded-lg bg-white p-6 shadow-sm">
             <h2 class="mb-6 font-[Inter,_sans-serif] text-[16px] leading-[normal] font-medium text-black">
                 Valores de {{ $grupos[$grupo] }}
@@ -57,7 +112,7 @@
                 @error('valor') <p class="w-full text-sm text-red-600">{{ $message }}</p> @enderror
             </form>
 
-            <div class="overflow-x-auto">
+            <div class="overflow-x-auto scroll-sutil">
                 <table class="w-full min-w-[320px] text-left">
                     <thead>
                         <tr class="border-b border-slate-100 text-[11px] tracking-wide text-slate-500 uppercase">
@@ -68,14 +123,14 @@
                     <tbody>
                         @foreach ($valores as $item)
                             <tr wire:key="valor-{{ $item->id }}" class="border-b border-slate-100 last:border-0">
-                                <td class="px-2 py-3 text-sm text-slate-800">{{ (float) $item->valor }}</td>
+                                <td class="px-2 py-3 text-sm text-slate-800">{{ \App\Support\Numero::corto($item->valor, 4) }}</td>
                                 <td class="px-2 py-3">
                                     <div class="flex items-center justify-end">
                                         <button
                                             type="button"
                                             wire:click="eliminar({{ $item->id }})"
-                                            wire:confirm="¿Eliminar el valor {{ (float) $item->valor }}?"
-                                            aria-label="Eliminar {{ (float) $item->valor }}"
+                                            wire:confirm="¿Eliminar el valor {{ \App\Support\Numero::corto($item->valor, 4) }}?"
+                                            aria-label="Eliminar {{ \App\Support\Numero::corto($item->valor, 4) }}"
                                             class="text-red-400 hover:text-red-600"
                                         >
                                             <x-icon name="trash-2" class="h-4 w-4" />
@@ -96,5 +151,6 @@
                 </table>
             </div>
         </section>
+        @endif
     </div>
 </div>

@@ -2,47 +2,64 @@
 
 namespace App\Livewire\Cotizaciones;
 
-use Illuminate\Support\Str;
+use App\Models\Cotizacion;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
-/**
- * Vista estatica hasta que exista el modulo de cotizaciones.
- */
 #[Layout('components.layouts.panel')]
 #[Title('Cotizaciones')]
 class Index extends Component
 {
-    /**
-     * Filas de la maqueta. El formulario las usa para saber cual es el
-     * siguiente numero; desaparecen cuando exista la tabla de cotizaciones.
-     */
-    public const MAQUETA = [
-        ['id' => 1, 'numero' => '002014/2026', 'fecha' => '13/07/2026', 'cliente' => 'Dos Anclas', 'vendedor' => 'Cristian Aguero', 'estado' => 'Pendiente'],
-        ['id' => 2, 'numero' => '002013/2026', 'fecha' => '13/07/2026', 'cliente' => 'Dos Anclas', 'vendedor' => 'Cristian Aguero', 'estado' => 'Pendiente'],
-        ['id' => 3, 'numero' => '002012/2026', 'fecha' => '13/07/2026', 'cliente' => 'Dos Anclas', 'vendedor' => 'Cristian Aguero', 'estado' => 'Pendiente'],
-        ['id' => 4, 'numero' => '002011/2026', 'fecha' => '13/07/2026', 'cliente' => 'Dos Anclas', 'vendedor' => 'Cristian Aguero', 'estado' => 'Pendiente'],
-        ['id' => 5, 'numero' => '002010/2026', 'fecha' => '13/07/2026', 'cliente' => 'Dos Anclas', 'vendedor' => 'Cristian Aguero', 'estado' => 'Pendiente'],
-        ['id' => 6, 'numero' => '002009/2026', 'fecha' => '13/07/2026', 'cliente' => 'Dos Anclas', 'vendedor' => 'Cristian Aguero', 'estado' => 'Finalizado'],
-        ['id' => 7, 'numero' => '002008/2026', 'fecha' => '13/07/2026', 'cliente' => 'Dos Anclas', 'vendedor' => 'Cristian Aguero', 'estado' => 'Finalizado'],
-        ['id' => 8, 'numero' => '002007/2026', 'fecha' => '13/07/2026', 'cliente' => 'Dos Anclas', 'vendedor' => 'Cristian Aguero', 'estado' => 'Finalizado'],
-    ];
-
     public string $busqueda = '';
+
+    public function eliminar(int $id): void
+    {
+        Cotizacion::findOrFail($id)->delete();
+
+        session()->flash('status', 'Cotización eliminada.');
+    }
+
+    public function cambiarEstado(int $id): void
+    {
+        $cotizacion = Cotizacion::findOrFail($id);
+
+        // Pendiente -> Aprobada -> Finalizada -> Pendiente.
+        $estados = array_keys(Cotizacion::ESTADOS);
+        $siguiente = $estados[(array_search($cotizacion->estado, $estados, true) + 1) % count($estados)];
+
+        $cotizacion->update([
+            'estado' => $siguiente,
+            'aprobada_en' => $siguiente === Cotizacion::APROBADA ? now() : ($siguiente === Cotizacion::PENDIENTE ? null : $cotizacion->aprobada_en),
+        ]);
+    }
 
     public function render()
     {
-        $cotizaciones = collect(self::MAQUETA);
-
         $texto = trim($this->busqueda);
 
-        if ($texto !== '') {
-            $cotizaciones = $cotizaciones->filter(fn (array $cotizacion) => collect([
-                $cotizacion['numero'], $cotizacion['cliente'], $cotizacion['vendedor'],
-            ])->contains(fn (string $valor) => Str::contains($valor, $texto, ignoreCase: true)));
-        }
+        $cotizaciones = Cotizacion::with(['cliente', 'vendedor'])
+            ->when($texto !== '', function ($query) use ($texto) {
+                $query->where(function ($query) use ($texto) {
+                    $query->where('numero', 'like', "%{$texto}%")
+                        ->orWhere('referencia', 'like', "%{$texto}%")
+                        ->orWhereHas('cliente', fn ($q) => $q->where('razon_social', 'like', "%{$texto}%"))
+                        ->orWhereHas('vendedor', fn ($q) => $q->where('nombre', 'like', "%{$texto}%"));
+                });
+            })
+            ->orderByDesc('fecha')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (Cotizacion $cotizacion) => [
+                'id' => $cotizacion->id,
+                'numero' => $cotizacion->numero,
+                'fecha' => $cotizacion->fecha->format('d/m/Y'),
+                'cliente' => $cotizacion->cliente?->razon_social ?? '-',
+                'vendedor' => $cotizacion->vendedor?->nombre ?? '-',
+                'estado' => $cotizacion->estado,
+                'estado_nombre' => Cotizacion::ESTADOS[$cotizacion->estado] ?? ucfirst($cotizacion->estado),
+            ]);
 
-        return view('livewire.cotizaciones.index', ['cotizaciones' => $cotizaciones]);
+        return view('livewire.cotizaciones.index', ['cotizaciones' => $cotizaciones, 'buscando' => $texto !== '']);
     }
 }

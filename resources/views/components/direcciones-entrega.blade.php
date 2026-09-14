@@ -21,13 +21,14 @@
     </div>
 
     <div class="overflow-hidden rounded-lg bg-white shadow-sm">
-        <div class="overflow-x-auto">
-            <table class="w-full min-w-[720px] text-left">
+        <div class="overflow-x-auto scroll-sutil">
+            <table class="w-full min-w-[960px] text-left">
                 <thead>
                     <tr class="border-b border-slate-100 bg-slate-50/60 text-[11px] tracking-wide text-slate-500 uppercase">
                         <th class="px-6 py-3 font-medium">Zona</th>
                         <th class="px-6 py-3 font-medium">Dirección</th>
                         <th class="px-6 py-3 font-medium">Código postal</th>
+                        <th class="px-6 py-3 font-medium">Observaciones</th>
                         <th class="w-24 px-6 py-3"></th>
                     </tr>
                 </thead>
@@ -98,6 +99,16 @@
                                     @error('direcciones.'.$indice.'.codigo_postal') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                                 </td>
                                 <td class="px-6 py-3">
+                                    <textarea
+                                        wire:model="direcciones.{{ $indice }}.observaciones"
+                                        rows="2"
+                                        placeholder="Horarios, referencias, contacto en destino..."
+                                        aria-label="Observaciones"
+                                        class="{{ str_replace('h-10 ', 'min-h-10 py-2 ', $campo) }}"
+                                    ></textarea>
+                                    @error('direcciones.'.$indice.'.observaciones') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                                </td>
+                                <td class="px-6 py-3">
                                     <div class="flex items-center justify-end gap-3">
                                         <button type="button" wire:click="listoDireccion" aria-label="Listo" class="text-[#1c5480] hover:text-[#174567]">
                                             <x-icon name="check" class="h-4 w-4" />
@@ -111,6 +122,7 @@
                                 <td class="px-6 py-4 text-sm text-slate-700">{{ $nombreZona[$fila['flete_zona_id']] ?? '-' }}</td>
                                 <td class="px-6 py-4 text-sm text-slate-700">{{ $fila['direccion'] ?: '-' }}</td>
                                 <td class="px-6 py-4 text-sm text-slate-700">{{ $fila['codigo_postal'] ?: '-' }}</td>
+                                <td class="max-w-[280px] px-6 py-4 text-sm whitespace-pre-line text-slate-700">{{ ($fila['observaciones'] ?? '') !== '' ? $fila['observaciones'] : '-' }}</td>
                                 <td class="px-6 py-4">
                                     <div class="flex items-center justify-end gap-3">
                                         <button
@@ -137,7 +149,7 @@
 
                     @if (count($direcciones) === 0)
                         <tr>
-                            <td colspan="4" class="px-6 py-10 text-center text-sm text-slate-400">
+                            <td colspan="5" class="px-6 py-10 text-center text-sm text-slate-400">
                                 Todavía no hay direcciones de entrega cargadas.
                             </td>
                         </tr>

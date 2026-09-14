@@ -18,7 +18,7 @@
         {{-- Toneladas aprobadas hoy --}}
         <section class="rounded-lg bg-white p-6 shadow-sm">
             <h2 class="font-[Inter,_sans-serif] text-[16px] leading-[normal] font-medium text-black">Toneladas aprobadas hoy</h2>
-            <p class="text-xs text-slate-400">Objetivo diario: {{ $toneladas['objetivo'] }} toneladas</p>
+            <p class="text-xs text-slate-400">Objetivo diario: {{ \App\Support\Numero::corto($toneladas['objetivo']) }} toneladas</p>
 
             <div class="mt-4 flex flex-wrap items-center justify-center gap-8">
                 <svg viewBox="0 0 200 200" class="h-56 w-56" role="img" aria-label="{{ $toneladas['aprobadas'] }} de {{ $toneladas['objetivo'] }} toneladas aprobadas hoy">
@@ -27,7 +27,7 @@
                         <circle cx="100" cy="100" r="{{ $radio }}" stroke="{{ $APROBADO }}" stroke-dasharray="{{ $arco }} {{ $circunferencia - $arco }}" />
                     </g>
                     <text x="100" y="100" text-anchor="middle" dominant-baseline="central" class="fill-slate-900 text-[28px]">
-                        {{ $toneladas['aprobadas'] }} t
+                        {{ \App\Support\Numero::corto($toneladas['aprobadas']) }} t
                     </text>
                 </svg>
 
@@ -37,14 +37,14 @@
                             <span class="h-2.5 w-2.5 rounded-full" style="background-color: {{ $APROBADO }}"></span>
                             Aprobado hoy
                         </dt>
-                        <dd class="mt-1 text-xl font-bold" style="color: {{ $APROBADO }}">{{ $toneladas['aprobadas'] }} t</dd>
+                        <dd class="mt-1 text-xl font-bold" style="color: {{ $APROBADO }}">{{ \App\Support\Numero::corto($toneladas['aprobadas']) }} t</dd>
                     </div>
                     <div>
                         <dt class="flex items-center gap-2 text-base text-slate-600">
                             <span class="h-2.5 w-2.5 rounded-full" style="background-color: {{ $FALTANTE }}"></span>
                             Faltan
                         </dt>
-                        <dd class="mt-1 text-xl font-bold" style="color: {{ $APROBADO }}">{{ $faltan }} t</dd>
+                        <dd class="mt-1 text-xl font-bold" style="color: {{ $APROBADO }}">{{ \App\Support\Numero::corto($faltan) }} t</dd>
                     </div>
                 </dl>
             </div>
@@ -60,14 +60,14 @@
 
             <ul class="mt-4 flex flex-col gap-3">
                 @foreach ($alertas as $alerta)
-                    <li class="flex items-center justify-between rounded-md border border-red-100 bg-red-50/60 px-4 py-3">
+                    <li wire:key="alerta-{{ $alerta['id'] }}" class="flex items-center justify-between rounded-md border border-red-100 bg-red-50/60 px-4 py-3">
                         <div>
                             <div class="flex items-center gap-2">
                                 <span class="text-sm font-semibold text-red-600">{{ $alerta['codigo'] }}</span>
                                 <span class="rounded bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700">{{ $alerta['estado'] }}</span>
                             </div>
-                            <p class="mt-1 text-sm text-slate-800">{{ $alerta['cliente'] }}</p>
-                            <p class="text-xs text-slate-400">{{ $alerta['toneladas'] }} t solicitadas</p>
+                            <a href="{{ route('cotizaciones.edit', $alerta['id']) }}" wire:navigate class="mt-1 block text-sm text-slate-800 hover:text-[#1c5480]">{{ $alerta['cliente'] }}</a>
+                            <p class="text-xs text-slate-400">{{ \App\Support\Numero::corto($alerta['toneladas']) }} t solicitadas</p>
                         </div>
                         <div class="text-right">
                             <p class="text-2xl font-bold text-red-600">{{ $alerta['dias'] }}</p>
@@ -75,6 +75,12 @@
                         </div>
                     </li>
                 @endforeach
+
+                @if ($alertas->isEmpty())
+                    <li class="rounded-md border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-400">
+                        No hay cotizaciones pendientes hace más de 7 días.
+                    </li>
+                @endif
             </ul>
         </section>
     </div>

@@ -416,7 +416,10 @@ DROP TABLE IF EXISTS `vendedores`;
 CREATE TABLE `vendedores` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `nombre` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `comision` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `comision_bobinas` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `comision_dpk` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `comision_pouch` decimal(5,2) NOT NULL DEFAULT '0.00',
+  `comision_4_costuras` decimal(5,2) NOT NULL DEFAULT '0.00',
   `activo` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
@@ -430,7 +433,7 @@ CREATE TABLE `vendedores` (
 
 LOCK TABLES `vendedores` WRITE;
 /*!40000 ALTER TABLE `vendedores` DISABLE KEYS */;
-INSERT INTO `vendedores` VALUES (1,'Ariel',2.00,1,'2026-08-24 15:02:43','2026-08-24 15:02:43'),(2,'Fernando',3.00,1,'2026-08-24 15:02:43','2026-08-24 15:02:43'),(3,'Carlos',1.00,1,'2026-08-24 15:02:43','2026-08-24 15:02:43'),(4,'Julian',2.00,1,'2026-08-24 15:02:43','2026-08-24 15:02:43');
+INSERT INTO `vendedores` VALUES (1,'Ariel',2.00,2.00,2.00,2.00,1,'2026-08-24 15:02:43','2026-08-24 15:02:43'),(2,'Fernando',3.00,3.00,3.00,3.00,1,'2026-08-24 15:02:43','2026-08-24 15:02:43'),(3,'Carlos',1.00,1.00,1.00,1.00,1,'2026-08-24 15:02:43','2026-08-24 15:02:43'),(4,'Julian',2.00,2.00,2.00,2.00,1,'2026-08-24 15:02:43','2026-08-24 15:02:43');
 /*!40000 ALTER TABLE `vendedores` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;

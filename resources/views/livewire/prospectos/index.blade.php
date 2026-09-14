@@ -42,7 +42,7 @@
     </div>
 
     <div class="overflow-hidden rounded-lg bg-white shadow-sm">
-        <div class="overflow-x-auto">
+        <div class="overflow-x-auto scroll-sutil">
             <table class="w-full min-w-[760px] text-left">
                 <thead>
                     <tr class="border-b border-slate-100 bg-slate-50/60 text-[11px] tracking-wide text-slate-500 uppercase">

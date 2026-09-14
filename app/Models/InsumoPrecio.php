@@ -9,13 +9,13 @@ class InsumoPrecio extends Model
 {
     protected $table = 'insumo_precios';
 
-    protected $fillable = ['insumo_item_id', 'proveedor_id', 'costo', 'costo_mas_1tn', 'flete', 'donde', 'costo_flete'];
+    protected $fillable = ['insumo_item_id', 'proveedor_id', 'costo', 'costo_volumen', 'flete', 'donde', 'costo_flete'];
 
     protected function casts(): array
     {
         return [
             'costo' => 'decimal:4',
-            'costo_mas_1tn' => 'decimal:4',
+            'costo_volumen' => 'decimal:4',
             'costo_flete' => 'decimal:4',
             'flete' => 'boolean',
         ];
@@ -42,12 +42,13 @@ class InsumoPrecio extends Model
     }
 
     /**
-     * Costo que corresponde a la cantidad: arriba de una tonelada manda el
-     * precio de mas de 1 TN, si esta cargado.
+     * Costo que corresponde a la cantidad: desde las toneladas que define la
+     * familia manda el precio por volumen, si esta cargado.
      */
     public function costoPara(float $kg): ?float
     {
-        $costo = $kg > 1000 && $this->costo_mas_1tn !== null ? (float) $this->costo_mas_1tn : $this->costo;
+        $porVolumen = $this->costo_volumen !== null && $kg >= $this->item->familia->kilosVolumen();
+        $costo = $porVolumen ? (float) $this->costo_volumen : $this->costo;
 
         return $costo === null ? null : (float) $costo;
     }

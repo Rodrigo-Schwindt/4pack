@@ -21,7 +21,7 @@ class Index extends Component
     public function render()
     {
         return view('livewire.vendedores.index', [
-            'vendedores' => Vendedor::orderBy('nombre')->get(['id', 'nombre', 'comision', 'activo']),
+            'vendedores' => Vendedor::orderBy('nombre')->get(['id', 'nombre', 'comision_bobinas', 'comision_dpk', 'comision_pouch', 'comision_4_costuras', 'activo']),
         ]);
     }
 }

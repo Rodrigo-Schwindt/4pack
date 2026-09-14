@@ -24,6 +24,6 @@ class FleteTramo extends Model
     /** Encabezado de la columna: "3.500 / 6 pallets". */
     public function getEtiquetaAttribute(): string
     {
-        return sprintf('%s / %d pallets', number_format((float) $this->kg, 0, ',', '.'), $this->pallets);
+        return sprintf('%s / %d pallets', \App\Support\Numero::formato($this->kg, 0), $this->pallets);
     }
 }

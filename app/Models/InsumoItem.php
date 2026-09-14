@@ -18,11 +18,16 @@ class InsumoItem extends Model
     }
 
     /**
-     * Kilos que pesan 1000 metros de este material: el peso especifico por mil.
+     * Kilos que pesan 1000 metros de este material para un ancho en centimetros
+     * y un micraje dados: peso especifico x mic x ancho / 100.
      */
-    public function kgrsPorMilMetros(): ?float
+    public function kgrsPorMilMetros(float $anchoCm, float $mic): ?float
     {
-        return $this->peso_especifico === null ? null : (float) $this->peso_especifico * 1000;
+        if ($this->peso_especifico === null || $anchoCm <= 0 || $mic <= 0) {
+            return null;
+        }
+
+        return (float) $this->peso_especifico * $mic * $anchoCm / 100;
     }
 
     public function familia(): BelongsTo

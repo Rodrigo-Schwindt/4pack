@@ -25,7 +25,7 @@ function cotizacionIniciada(string $razonSocial = 'Arcor')
         'razon_social' => $razonSocial,
     ]);
 
-    $vendedor = Vendedor::firstOrCreate(['nombre' => 'Ariel'], ['comision' => 2, 'activo' => true]);
+    $vendedor = Vendedor::firstOrCreate(['nombre' => 'Ariel'], ['comision_bobinas' => 2, 'activo' => true]);
 
     return Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
@@ -53,8 +53,8 @@ test('las vistas del panel exigen sesión', function (string $url) {
 })->with(['/dashboard', '/prospectos', '/clientes', '/cotizaciones', '/cotizaciones/create', '/configuracion', '/vendedores']);
 
 test('el listado de prospectos deja filtrar por vendedor', function () {
-    $ariel = Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true]);
-    $carlos = Vendedor::create(['nombre' => 'Carlos', 'comision' => 1, 'activo' => true]);
+    $ariel = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
+    $carlos = Vendedor::create(['nombre' => 'Carlos', 'comision_bobinas' => 1, 'activo' => true]);
 
     Contacto::create(['codigo' => '000445', 'estado' => Contacto::PROSPECTO, 'razon_social' => 'Alican', 'vendedor_id' => $ariel->id]);
     Contacto::create(['codigo' => '000446', 'estado' => Contacto::PROSPECTO, 'razon_social' => 'Cabrales', 'vendedor_id' => $carlos->id]);
@@ -131,6 +131,28 @@ test('editar un cliente guarda los cambios y conserva el código', function () {
     expect($cliente->fresh())->razon_social->toBe('Arcor S.A.')->codigo->toBe('000445');
 });
 
+test('las direcciones de entrega guardan observaciones', function () {
+    $cliente = Contacto::create(['codigo' => '000445', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
+
+    Livewire::test(Clientes\Form::class, ['contacto' => $cliente])
+        ->call('nuevaDireccion')
+        ->set('direcciones.0.direccion', 'Av. Mitre 1234')
+        ->set('direcciones.0.observaciones', "Entregar de 8 a 12.
+Preguntar por Juan.")
+        ->call('guardar')
+        ->assertHasNoErrors();
+
+    $direccion = $cliente->direcciones()->first();
+
+    expect($direccion->observaciones)->toBe("Entregar de 8 a 12.
+Preguntar por Juan.");
+
+    Livewire::test(Clientes\Form::class, ['contacto' => $cliente->fresh()])
+        ->assertSet('direcciones.0.observaciones', "Entregar de 8 a 12.
+Preguntar por Juan.")
+        ->assertSee('Preguntar por Juan.');
+});
+
 test('la solapa de productos recién se habilita con el cliente creado', function () {
     Livewire::test(Clientes\Form::class)
         ->call('verSolapa', 'productos')
@@ -150,7 +172,10 @@ test('eliminar un prospecto lo borra junto con su actividad', function () {
 test('el abm de vendedores da de alta, edita y elimina', function () {
     Livewire::test(Vendedores\Form::class)
         ->set('nombre', 'Ariel')
-        ->set('comision', '2.5')
+        ->set('comisiones.comision_bobinas', '2.5')
+        ->set('comisiones.comision_dpk', '3')
+        ->set('comisiones.comision_pouch', '1')
+        ->set('comisiones.comision_4_costuras', '0')
         ->set('activo', true)
         ->call('guardar')
         ->assertHasNoErrors()
@@ -158,7 +183,10 @@ test('el abm de vendedores da de alta, edita y elimina', function () {
 
     $vendedor = Vendedor::firstWhere('nombre', 'Ariel');
 
-    expect((float) $vendedor->comision)->toBe(2.5);
+    expect((float) $vendedor->comision_bobinas)->toBe(2.5)
+        ->and((float) $vendedor->comision_dpk)->toBe(3.0)
+        ->and((float) $vendedor->comision_pouch)->toBe(1.0)
+        ->and((float) $vendedor->comision_4_costuras)->toBe(0.0);
 
     Livewire::test(Vendedores\Form::class, ['vendedor' => $vendedor])
         ->set('nombre', 'Ariel Gómez')
@@ -175,22 +203,40 @@ test('el abm de vendedores da de alta, edita y elimina', function () {
 test('la comisión del vendedor va de 0 a 100', function () {
     Livewire::test(Vendedores\Form::class)
         ->set('nombre', 'Ariel')
-        ->set('comision', '120')
+        ->set('comisiones.comision_bobinas', '120')
+        ->set('comisiones.comision_dpk', '0')
+        ->set('comisiones.comision_pouch', '0')
+        ->set('comisiones.comision_4_costuras', '0')
         ->call('guardar')
-        ->assertHasErrors(['comision' => 'max']);
+        ->assertHasErrors(['comisiones.comision_bobinas' => 'max']);
 });
 
-test('el buscador de cotizaciones filtra la maqueta', function () {
+test('la comisión del vendedor depende del tipo de producto', function () {
+    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'comision_dpk' => 3.5, 'comision_pouch' => 1, 'comision_4_costuras' => 4, 'activo' => true]);
+
+    expect($vendedor->comision('bobinas'))->toBe(2.0)
+        ->and($vendedor->comision('confeccion-dpk'))->toBe(3.5)
+        ->and($vendedor->comision('confeccion-pouch'))->toBe(1.0)
+        ->and($vendedor->comision('confeccion-4-costuras'))->toBe(4.0)
+        ->and($vendedor->comision(''))->toBe(0.0);
+});
+
+test('el buscador de cotizaciones filtra las guardadas', function () {
+    $cliente = Contacto::create(['codigo' => Contacto::siguienteCodigo(), 'estado' => Contacto::CLIENTE, 'razon_social' => 'Dos Anclas']);
+
+    App\Models\Cotizacion::create(['numero' => '000001/2026', 'fecha' => '2026-07-13', 'contacto_id' => $cliente->id, 'datos' => []]);
+    App\Models\Cotizacion::create(['numero' => '000002/2026', 'fecha' => '2026-07-13', 'contacto_id' => $cliente->id, 'datos' => []]);
+
     Livewire::test(App\Livewire\Cotizaciones\Index::class)
-        ->assertSee('002014/2026')
-        ->set('busqueda', '002007')
-        ->assertSee('002007/2026')
-        ->assertDontSee('002014/2026');
+        ->assertSee('000002/2026')
+        ->set('busqueda', '000001')
+        ->assertSee('000001/2026')
+        ->assertDontSee('000002/2026');
 });
 
 test('el alta de cotizaciones propone el siguiente número del año', function () {
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
-        ->assertSet('numero', '002015/'.now()->year)
+        ->assertSet('numero', '000001/'.now()->year)
         ->assertSet('fecha', now()->format('Y-m-d'));
 });
 
@@ -213,7 +259,7 @@ test('cambiar el tipo de producto vuelve a la solapa de datos', function () {
 });
 
 test('el alta de cotizaciones lista los clientes y los vendedores', function () {
-    Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true]);
+    Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
     Contacto::create(['codigo' => '000445', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
     Contacto::create(['codigo' => '000446', 'estado' => Contacto::PROSPECTO, 'razon_social' => 'Alican']);
 
@@ -268,7 +314,7 @@ test('la solapa de cotización arma el texto y sigue las entregas cargadas', fun
     cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->call('verSolapa', 'cotizacion')
-        ->assertSee('Cotización 1')
+        ->assertSee('Cotización 000001/'.now()->year)
         ->assertSee('Anchos de bobina')
         ->assertSee('Condiciones de venta')
         ->assertSee('Entrega 1')
@@ -346,7 +392,7 @@ test('los ajustes se normalizan a dos decimales', function () {
 });
 
 test('el cliente y el vendedor salen de los cargados en el sistema', function () {
-    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true]);
+    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
     $cliente = Contacto::create(['codigo' => '000445', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
@@ -355,7 +401,7 @@ test('el cliente y el vendedor salen de los cargados en el sistema', function ()
 });
 
 test('elegir un cliente y un vendedor guarda el id, no el nombre', function () {
-    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true]);
+    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
     $cliente = Contacto::create(['codigo' => '000445', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
@@ -377,7 +423,7 @@ test('sin cliente ni vendedor no se puede elegir el tipo de producto', function 
 
 test('elegir cliente y vendedor habilita los campos del tipo de producto', function () {
     $cliente = Contacto::create(['codigo' => '000445', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
-    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true]);
+    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
@@ -413,7 +459,7 @@ test('el desarrollo toma las mangas cargadas en ajustes y permite sumar una', fu
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
-        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->assertSeeHtml('<option value="35">35</option>')
         ->call('abrirAlta', 'mangas')
@@ -443,7 +489,7 @@ test('cargar una manga que ya existe la elige en vez de fallar', function () {
 test('el producto se carga y se borra desde la cotización, y es solo del cliente', function () {
     $arcor = Contacto::create(['codigo' => '000445', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
     $bagley = Contacto::create(['codigo' => '000446', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Bagley']);
-    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true]);
+    $vendedor = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $arcor->id)
@@ -499,7 +545,7 @@ test('los productos ya cargados aparecen al elegir el cliente', function () {
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
-        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->assertSeeHtml('<option value="'.$producto->id.'">Flowpack x 700g</option>');
 });
@@ -579,22 +625,25 @@ test('solvente es si/no y laminación simple, bi. o tri.', function () {
         ->assertSet('bobinas.laminacion', 'Bi.');
 });
 
-test('a la derecha de colores va (diseños + cambios) x colores', function () {
+test('a la derecha de colores va (diseños x colores) + (variedades x cambios)', function () {
     $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas');
 
     // Sin nada cargado no muestra ningún número.
     expect($formulario->instance()->coloresTotal())->toBe('');
 
-    // Los valores de la maqueta: 1 diseño, 0 cambios, 8 colores.
+    // 1 diseño, 8 colores, sin variedades ni cambios.
     $formulario->set('bobinas.disenos', '1')
         ->set('bobinas.cambios', '0')
         ->set('bobinas.colores', '8');
 
     expect($formulario->instance()->coloresTotal())->toBe('8');
 
-    $formulario->set('bobinas.cambios', '2');
+    // 2 diseños x 8 colores + 3 variedades x 2 cambios = 16 + 6.
+    $formulario->set('bobinas.disenos', '2')
+        ->set('bobinas.variedades', '3')
+        ->set('bobinas.cambios', '2');
 
-    expect($formulario->instance()->coloresTotal())->toBe('24');
+    expect($formulario->instance()->coloresTotal())->toBe('22');
 });
 
 test('los campos que recalculan en el servidor usan wire:model.live', function () {
@@ -602,18 +651,33 @@ test('los campos que recalculan en el servidor usan wire:model.live', function (
     // el total de colores y el redondeo de los ajustes nunca se actualizaban.
     $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas');
 
-    foreach (['bobinas.disenos', 'bobinas.cambios', 'bobinas.colores', 'ajuste_categoria', 'ajuste_vendedor'] as $campo) {
+    foreach (['bobinas.disenos', 'bobinas.variedades', 'bobinas.cambios', 'bobinas.colores', 'ajuste_categoria', 'ajuste_vendedor'] as $campo) {
         $formulario->assertSeeHtml('wire:model.live.blur="'.$campo.'"');
     }
+});
+
+test('el total de colores avisa qué falta completar', function () {
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas');
+
+    $formulario->assertSee('Falta completar: Diseños, Variedades, Cambios, Colores.');
+
+    $formulario->set('bobinas.disenos', '1')->set('bobinas.colores', '8');
+
+    expect($formulario->instance()->ayudaColores())->toBe('Falta completar: Variedades, Cambios.');
+
+    $formulario->set('bobinas.variedades', '0')->set('bobinas.cambios', '0');
+
+    expect($formulario->instance()->ayudaColores())->toBeNull();
 });
 
 test('el total de colores se ve en la pantalla', function () {
     cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.disenos', '10')
+        ->set('bobinas.variedades', '5')
         ->set('bobinas.cambios', '10')
         ->set('bobinas.colores', '10')
-        ->assertSeeHtml('>200</output>');
+        ->assertSeeHtml('>150</output>');
 });
 
 test('sin cantidad (mts) los campos de entrega quedan bloqueados', function () {
@@ -645,6 +709,40 @@ test('la forma de entrega avisa cuánto falta repartir', function () {
         ->assertSee('te pasaste por 3.000');
 });
 
+test('con retiro en sucursal los campos de flete quedan en gris y sin costo', function () {
+    $zona = App\Models\FleteZona::create(['nombre' => 'Quilmes']);
+    $tramo = App\Models\FleteTramo::create(['kg' => 3500, 'pallets' => 6]);
+    App\Models\FletePrecio::create(['flete_zona_id' => $zona->id, 'flete_tramo_id' => $tramo->id, 'precio' => 150000]);
+    App\Models\Ajuste::definir(App\Livewire\Fletes\Index::GRUPO_DOLAR, 1000);
+
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas')->set('bobinas.cantidad', '67000');
+    $cliente = App\Models\Contacto::firstWhere('razon_social', 'Arcor');
+    $cliente->direcciones()->create(['flete_zona_id' => $zona->id, 'direccion' => 'Av. Mitre 1234']);
+
+    // Arranca como envío, con el flete habilitado y costeado.
+    $formulario->assertSet('bobinas.forma_entrega', 'Envío')
+        ->set('entregas.0.flete_zona_id', (string) $zona->id)
+        ->set('entregas.0.flete_tramo_id', (string) $tramo->id);
+
+    expect(campoBloqueado($formulario->html(), 'entregas.0.flete_zona_id'))->toBeFalse()
+        ->and($formulario->instance()->calculoFletes())->toHaveCount(1);
+
+    // Retira el cliente: flete, dirección y tramo en gris y vacíos, sin fila de flete en costos.
+    $formulario->set('bobinas.forma_entrega', 'Retiro en sucursal')
+        ->assertSet('entregas.0.flete_zona_id', '')
+        ->assertSet('entregas.0.flete_tramo_id', '')
+        ->assertSee('El cliente retira: no se cotiza flete');
+
+    $html = $formulario->html();
+
+    expect(campoBloqueado($html, 'entregas.0.flete_zona_id'))->toBeTrue()
+        ->and(campoBloqueado($html, 'entregas.0.direccion_id'))->toBeTrue()
+        ->and(campoBloqueado($html, 'entregas.0.flete_tramo_id'))->toBeTrue()
+        ->and(campoBloqueado($html, 'entregas.0.cantidad'))->toBeFalse()
+        ->and($formulario->instance()->calculoFletes())->toBe([])
+        ->and($formulario->instance()->condicionesDeVenta()['lugar'])->toBe('Retiro en sucursal');
+});
+
 test('los kg / pallets salen de flete insumos', function () {
     $tramo = App\Models\FleteTramo::create(['kg' => 3500, 'pallets' => 6]);
 
@@ -666,7 +764,7 @@ test('el flete solo lista las zonas donde el cliente tiene direcciones', functio
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
-        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         ->assertSeeHtml('<option value="'.$caba->id.'">Caba</option>')
@@ -684,7 +782,7 @@ test('la dirección se limita a la zona del flete elegido', function () {
 
     $formulario = Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
-        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         // Sin flete elegido no hay direcciones para elegir.
@@ -711,7 +809,7 @@ test('la dirección de entrega es solo la del cliente, no la de otro', function 
 
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->set('cliente_id', $cliente->id)
-        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision' => 2, 'activo' => true])->id)
+        ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
         ->set('bobinas.cantidad', '67000')
         ->set('entregas.0.flete_zona_id', (string) $zona->id)
@@ -878,4 +976,153 @@ test('los campos que habilitan a otros van resaltados con asterisco', function (
     foreach (['Proveedor', 'Reprint', 'Dirección'] as $titulo) {
         expect($html)->not->toMatch('/font-semibold text-\[#22577C\][^>]*>\s*'.preg_quote(e($titulo), '/').' \*/');
     }
+});
+
+test('el dólar de flete insumos se trae de la cotización oficial (BNA)', function () {
+    Illuminate\Support\Facades\Http::fake([
+        App\Services\DolarOficial::URL => Illuminate\Support\Facades\Http::response(['compra' => 1480, 'venta' => 1530, 'fechaActualizacion' => '2026-09-14T12:00:00.000Z']),
+    ]);
+    App\Models\Ajuste::definir(App\Livewire\Fletes\Index::GRUPO_DOLAR, 1000);
+
+    Livewire::test(App\Livewire\Fletes\Index::class)
+        ->assertSet('dolar', '1000')
+        ->assertSet('dolarAutomatico', false)
+        ->set('dolarAutomatico', true)
+        ->assertHasNoErrors()
+        ->assertSet('dolar', '1530')
+        ->assertSee('venta $1.530,00');
+
+    expect(App\Models\Ajuste::valorDe(App\Livewire\Fletes\Index::GRUPO_DOLAR))->toBe(1530.0)
+        ->and(App\Services\DolarOficial::automatico())->toBeTrue();
+
+    // Con el automatico prendido el campo queda bloqueado.
+    expect(campoBloqueado(Livewire::test(App\Livewire\Fletes\Index::class)->html(), 'dolar'))->toBeTrue();
+});
+
+test('si DolarApi no responde se toma el dólar del BCRA', function () {
+    Illuminate\Support\Facades\Http::fake([
+        App\Services\DolarOficial::URL => Illuminate\Support\Facades\Http::response(null, 500),
+        App\Services\DolarOficial::URL_BCRA.'*' => Illuminate\Support\Facades\Http::response(['status' => 200, 'results' => [['idVariable' => 4, 'detalle' => [['fecha' => '2026-09-11', 'valor' => 1531.73]]]]]),
+    ]);
+
+    Livewire::test(App\Livewire\Fletes\Index::class)
+        ->call('actualizarDolar')
+        ->assertHasNoErrors()
+        ->assertSet('dolar', '1531.73')
+        ->assertSee('Oficial BCRA:')
+        ->assertDontSee('compra');
+
+    expect(App\Models\Ajuste::valorDe(App\Livewire\Fletes\Index::GRUPO_DOLAR))->toBe(1531.73);
+});
+
+test('si ninguna cotización oficial responde el dólar queda como estaba', function () {
+    Illuminate\Support\Facades\Http::fake([
+        App\Services\DolarOficial::URL => Illuminate\Support\Facades\Http::response(null, 500),
+        App\Services\DolarOficial::URL_BCRA.'*' => fn () => throw new Illuminate\Http\Client\ConnectionException('sin red'),
+    ]);
+    App\Models\Ajuste::definir(App\Livewire\Fletes\Index::GRUPO_DOLAR, 1000);
+
+    Livewire::test(App\Livewire\Fletes\Index::class)
+        ->call('actualizarDolar')
+        ->assertHasErrors('dolar')
+        ->assertSet('dolar', '1000');
+
+    expect(App\Models\Ajuste::valorDe(App\Livewire\Fletes\Index::GRUPO_DOLAR))->toBe(1000.0);
+});
+
+test('el comando dolar:actualizar respeta el modo manual', function () {
+    Illuminate\Support\Facades\Http::fake([
+        App\Services\DolarOficial::URL => Illuminate\Support\Facades\Http::response(['compra' => 1480, 'venta' => 1530, 'fechaActualizacion' => '2026-09-14T12:00:00.000Z']),
+    ]);
+    App\Models\Ajuste::definir(App\Livewire\Fletes\Index::GRUPO_DOLAR, 1000);
+
+    $this->artisan('dolar:actualizar')->assertSuccessful();
+    expect(App\Models\Ajuste::valorDe(App\Livewire\Fletes\Index::GRUPO_DOLAR))->toBe(1000.0);
+
+    App\Services\DolarOficial::definirAutomatico(true);
+
+    $this->artisan('dolar:actualizar')->assertSuccessful();
+    expect(App\Models\Ajuste::valorDe(App\Livewire\Fletes\Index::GRUPO_DOLAR))->toBe(1530.0);
+});
+
+test('cada familia de insumos define desde cuántas toneladas rige el precio por volumen', function () {
+    $item = materialConProveedores();
+    $familia = $item->familia;
+    $proveedor = App\Models\Proveedor::firstWhere('nombre', 'Polifilm');
+    $familia->proveedores()->sync([$proveedor->id]);
+
+    expect((float) $familia->volumen_desde_tn)->toBe(1.0);
+
+    Livewire::test(App\Livewire\Insumos\Detalle::class, ['insumo' => $familia->insumo])
+        ->assertSet('volumenDesde.'.$familia->id, '1')
+        ->assertSee('Más de')
+        ->set('volumenDesde.'.$familia->id, '3')
+        ->assertHasNoErrors()
+        ->set('volumenDesde.'.$familia->id, '0')
+        ->assertHasErrors('volumenDesde.'.$familia->id)
+        ->assertSet('volumenDesde.'.$familia->id, '3');
+
+    expect((float) $familia->fresh()->volumen_desde_tn)->toBe(3.0);
+
+    // El precio por volumen recien manda desde las 3 toneladas.
+    $precio = App\Models\InsumoPrecio::where('insumo_item_id', $item->id)->where('proveedor_id', $proveedor->id)->first();
+    $precio->update(['costo_volumen' => 3.1]);
+    $precio = $precio->fresh();
+
+    expect($precio->costoPara(2500))->toBe(3.35)
+        ->and($precio->costoPara(3000))->toBe(3.1)
+        ->and($precio->costoPara(5000))->toBe(3.1);
+});
+
+test('se puede agendar una dirección de entrega del cliente desde la cotización', function () {
+    $quilmes = App\Models\FleteZona::create(['nombre' => 'Quilmes']);
+
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas')->set('bobinas.cantidad', '67000');
+    $cliente = App\Models\Contacto::firstWhere('razon_social', 'Arcor');
+
+    // Sin direcciones el flete avisa y ofrece el +.
+    $formulario->assertSee('agregá una con el +');
+
+    // Con una zona del catalogo.
+    $formulario->call('abrirDireccion', 0)
+        ->assertSet('agregandoDireccionEn', 0)
+        ->set('nuevaDireccion.flete_zona_id', (string) $quilmes->id)
+        ->set('nuevaDireccion.direccion', 'Av. Mitre 1234')
+        ->set('nuevaDireccion.codigo_postal', '1878')
+        ->set('nuevaDireccion.observaciones', 'Entregar de 8 a 12')
+        ->call('guardarDireccion')
+        ->assertHasNoErrors()
+        ->assertSet('agregandoDireccionEn', null);
+
+    $direccion = $cliente->direcciones()->first();
+
+    expect($direccion->direccion)->toBe('Av. Mitre 1234')
+        ->and($direccion->flete_zona_id)->toBe($quilmes->id)
+        ->and($direccion->observaciones)->toBe('Entregar de 8 a 12');
+
+    // Queda elegida en la entrega y la zona ya aparece entre los fletes del cliente.
+    $formulario->assertSet('entregas.0.flete_zona_id', (string) $quilmes->id)
+        ->assertSet('entregas.0.direccion_id', (string) $direccion->id)
+        ->assertSeeHtml('<option value="'.$quilmes->id.'">Quilmes</option>')
+        ->assertSee('Esta zona todavía no tiene precios en Flete Insumos');
+
+    // Con una zona nueva: entra al catalogo de flete, pendiente de precios.
+    $formulario->call('abrirDireccion', 1)
+        ->set('nuevaDireccion.nueva_zona', 'Pilar')
+        ->set('nuevaDireccion.direccion', 'Ruta 8 km 50')
+        ->call('guardarDireccion')
+        ->assertHasNoErrors();
+
+    $pilar = App\Models\FleteZona::firstWhere('nombre', 'Pilar');
+
+    expect($pilar)->not->toBeNull()
+        ->and($cliente->direcciones()->count())->toBe(2);
+
+    $formulario->assertSet('entregas.1.flete_zona_id', (string) $pilar->id);
+
+    // Sin zona ni zona nueva no se guarda.
+    $formulario->call('abrirDireccion', 0)
+        ->set('nuevaDireccion.direccion', 'Otra 123')
+        ->call('guardarDireccion')
+        ->assertHasErrors(['nuevaDireccion.flete_zona_id', 'nuevaDireccion.nueva_zona']);
 });
