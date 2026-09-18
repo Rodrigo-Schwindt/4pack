@@ -613,9 +613,15 @@ class Form extends Component
             return;
         }
 
-        if (in_array($clave, ['ancho', 'modulos_ancho'], true)) {
+        $camposDeAncho = $this->esDpk
+            ? ['ancho', 'alto', 'fuelle', 'modulos_ancho', 'calle', 'modulos_desarrollo', 'envases']
+            : ['ancho', 'modulos_ancho'];
+
+        if (in_array($clave, $camposDeAncho, true)) {
             $this->recalcularAnchos();
         }
+
+        // Los accesorios y los extras entran en el costo del envase, que se arma en cada render.
 
         if ($clave === 'laminado') {
             $this->elegirLaminado((int) $valor);
@@ -704,14 +710,26 @@ class Form extends Component
 
         $faltan = [];
 
-        $conAncho = (float) ($this->bobinas['ancho'] ?: 0) > 0 && (float) ($this->bobinas['modulos_ancho'] ?: 0) > 0;
+        if ($this->esDpk) {
+            $conAncho = (float) ($this->bobinas['alto'] ?: 0) > 0;
 
-        if (! $conAncho) {
-            $faltan[] = 'Ancho y Módulos Ancho';
-        }
+            if ((float) ($this->bobinas['ancho'] ?: 0) <= 0 || ! $conAncho) {
+                $faltan[] = 'Ancho y Alto';
+            }
 
-        if ((float) ($this->bobinas['cantidad'] ?: 0) <= 0) {
-            $faltan[] = 'Cantidad (mts)';
+            if ((float) ($this->bobinas['envases'] ?: 0) <= 0) {
+                $faltan[] = 'Envases';
+            }
+        } else {
+            $conAncho = (float) ($this->bobinas['ancho'] ?: 0) > 0 && (float) ($this->bobinas['modulos_ancho'] ?: 0) > 0;
+
+            if (! $conAncho) {
+                $faltan[] = 'Ancho y Módulos Ancho';
+            }
+
+            if ((float) ($this->bobinas['cantidad'] ?: 0) <= 0) {
+                $faltan[] = 'Cantidad (mts)';
+            }
         }
 
         $elegidos = collect($this->bobinas['materiales'] ?? [])->filter(fn (array $material) => ! empty($material['material_id']));
@@ -834,9 +852,9 @@ class Form extends Component
         return Numero::formato($valor, $decimales);
     }
 
-    private function usd(?float $valor): string
+    private function usd(?float $valor, int $decimales = 2): string
     {
-        return Numero::usd($valor, prefijo: 'U$S ');
+        return Numero::usd($valor, $decimales, prefijo: 'U$S ');
     }
 
     /**
@@ -997,16 +1015,25 @@ class Form extends Component
         }
 
         $produccion = (float) $impresora->produccion_mts_hora;
+        $prepReprint = ($setup / max(Parametro::valor(Parametro::REPRINT_DIVISOR_SETUP), 1)) * $reprint;
+        $prodReprint = ($cantidad / $produccion) * $reprint;
+
+        // N20 de la hoja DPK: las horas del reprint tambien se cobran; en bobinas (N19) no.
+        $valorMil = $costo['valorMil'] * $imprime;
+        if ($this->esDpk) {
+            $valorMil = (($prep + $costo['prod'] + $prepReprint + $prodReprint) * $costo['valorHora']) / ($cantidad / 1000) * $imprime;
+        }
+        $kgrsTotales = array_sum($this->kgrsPorMilMetros);
 
         return [
             'flag' => $reprint,
             'prep' => $prep,
             'prod' => $costo['prod'] * $imprime,
-            'prepReprint' => ($setup / max(Parametro::valor(Parametro::REPRINT_DIVISOR_SETUP), 1)) * $reprint,
-            'prodReprint' => ($cantidad / $produccion) * $reprint,
+            'prepReprint' => $prepReprint,
+            'prodReprint' => $prodReprint,
             'valorHora' => $costo['valorHora'],
-            'valorMil' => $costo['valorMil'] * $imprime,
-            'valorKg' => $costo['valorKg'] === null ? null : $costo['valorKg'] * $imprime,
+            'valorMil' => $valorMil,
+            'valorKg' => $kgrsTotales > 0 ? $valorMil / $kgrsTotales : null,
         ];
     }
 
@@ -1098,7 +1125,7 @@ class Form extends Component
         return [
             'porColor' => $porColor,
             'porColorReprint' => $colores > 0 ? ($porColor / $colores) * $reprint : 0,
-            'valorKg' => ($porColor * $colores / $peso) * $imprime,
+            'valorKg' => (($this->esDpk ? ($colores > 0 ? ($porColor / $colores) * $reprint : 0) : 0) + $porColor * $colores) / $peso * $imprime,
         ];
     }
 
@@ -1148,6 +1175,11 @@ class Form extends Component
         $barniz = $this->precioInsumo('barniz') ?? 0;
         $alargue = $this->precioInsumo('dy_alargue') ?? 0;
         $reprintGrsM2 = (($barniz * Parametro::valor(Parametro::BARNIZ_PROPORCION) + $alargue * Parametro::valor(Parametro::ALARGUE_PROPORCION)) / 1000 * $caras) * $reprint;
+
+        // L22 del DPK: el reprint entra en los gramos por m2.
+        if ($this->esDpk) {
+            $grsM2 += $reprintGrsM2;
+        }
 
         // N21: por cada 1000 m de lamina (ancho + scrap, en dm), escalado por los colores sobre la base.
         $base = max(Parametro::valor(Parametro::IMPRESION_COLORES_BASE), 1);
@@ -1202,11 +1234,11 @@ class Form extends Component
             default => 0,
         };
 
-        $conSolvente = ($this->bobinas['solvente'] ?? '') === 'Si';
-
+        // En la planilla son dos preguntas independientes: cuantas pasadas sin solvente
+        // (Laminacion) y si ademas lleva una con solvente (Solvente = Si).
         return [
-            'sinSolvente' => $conSolvente ? 0 : $pasadas,
-            'conSolvente' => $conSolvente ? $pasadas : 0,
+            'sinSolvente' => $pasadas,
+            'conSolvente' => ($this->bobinas['solvente'] ?? '') === 'Si' ? 1 : 0,
         ];
     }
 
@@ -1240,16 +1272,24 @@ class Form extends Component
         $caras = Parametro::valor(Parametro::ADHESIVO_CARAS);
         $slCompuesto = $this->precioInsumo('sl_compuesto');
         $slCatalizador = $this->precioInsumo('sl_catalizador');
-        $slGrsM2 = $slCompuesto === null || $slCatalizador === null ? null
-            : ($slCompuesto / 1000 * Parametro::valor(Parametro::SOLVENTLESS_COMPUESTO))
-                + ($slCatalizador / 1000 * Parametro::valor(Parametro::SOLVENTLESS_CATALIZADOR)) * $caras * $sinSolvente;
+        if ($this->esDpk) {
+            // L25 del DPK: la mezcla completa por caras y pasadas.
+            $slGrsM2 = $slCompuesto === null || $slCatalizador === null ? null
+                : (($slCompuesto / 1000 * Parametro::valor(Parametro::DPK_SL_COMPUESTO))
+                    + ($slCatalizador / 1000 * Parametro::valor(Parametro::DPK_SL_CATALIZADOR))) * $caras * $sinSolvente;
+        } else {
+            $slGrsM2 = $slCompuesto === null || $slCatalizador === null ? null
+                : ($slCompuesto / 1000 * Parametro::valor(Parametro::SOLVENTLESS_COMPUESTO))
+                    + ($slCatalizador / 1000 * Parametro::valor(Parametro::SOLVENTLESS_CATALIZADOR)) * $caras * $sinSolvente;
+        }
         $scrapLaminacion = (float) ($this->bobinas['laminacion_scrap'] ?: 0) + (float) ($this->bobinas['bilaminacion_scrap'] ?: 0);
         $slMil = $slGrsM2 === null ? null : $slGrsM2 * (($anchoLamina + $scrapLaminacion) * 10);
         $slKg = $slMil === null ? null : $slMil / $kgrsTotales * $sinSolvente;
 
         // Fila 25: con solvente.
         $solvCompuesto = $this->precioInsumo('solvente_compuesto');
-        $solvGrsM2 = $solvCompuesto === null ? null : ($solvCompuesto / 1000) * $caras * $conSolvente;
+        $factorSolvente = $this->esDpk ? Parametro::valor(Parametro::DPK_SOLVENTE_FACTOR) : $caras;
+        $solvGrsM2 = $solvCompuesto === null ? null : ($solvCompuesto / 1000) * $factorSolvente * $conSolvente;
         $solvMil = $solvGrsM2 === null ? null : $solvGrsM2 * ($anchoLamina * 10);
         $solvKg = $solvMil === null ? null : $solvMil / $kgrsTotales;
 
@@ -1543,6 +1583,10 @@ class Form extends Component
     #[Computed]
     public function calculoRentabilidad(): ?array
     {
+        if ($this->esDpk) {
+            return $this->calculoRentabilidadDpk();
+        }
+
         $costoBruto = $this->costoBruto;
         $peso = (float) ($this->bobinas['peso'] ?: 0);
 
@@ -1626,9 +1670,380 @@ class Form extends Component
             return '-';
         }
 
+        // En el DPK la incidencia se mide sobre el precio por millar (S16 de la hoja).
+        if ($this->esDpk) {
+            $base = $r['contado'] - $r['precioBrutoMillar'] + $r['costoBrutoMillar'];
+
+            return $base > 0 ? $this->num($valorKg * 100 / $base).'%' : '-';
+        }
+
         $base = $r['contado'] - $r['plusKg'] - $r['comisionKg'];
 
         return $base > 0 ? $this->num($valorKg * 100 / $base).'%' : '-';
+    }
+
+    /**
+     * Pasa un "valor x 1000 mts" a "valor x millar de envases" (columna R de
+     * la hoja DPK): en 1000 m entran 100000 / ancho envases.
+     */
+    private function porMillar(?float $valorMil): ?float
+    {
+        $ancho = (float) ($this->bobinas['ancho'] ?: 0);
+        $modulos = max((float) ($this->bobinas['modulos_ancho'] ?: 1), 1);
+
+        return $valorMil === null || $ancho <= 0 ? null : $valorMil * $ancho / 100 / $modulos;
+    }
+
+    /**
+     * Precio por envase del accesorio elegido (zipper, troquel, pico) o de la
+     * caja, con el proveedor elegido en Insumos.
+     */
+    private function precioAccesorio(int|string|null $itemId): ?float
+    {
+        if (! $itemId) {
+            return null;
+        }
+
+        $item = InsumoItem::with('precios')->find($itemId);
+        $precio = $item?->precios->firstWhere('proveedor_id', $item->proveedor_elegido_id) ?? $item?->precios->first();
+
+        return $precio?->costo === null ? null : (float) $precio->costo;
+    }
+
+    private function precioCaja(): ?float
+    {
+        $item = InsumoItem::with('precios')
+            ->where('nombre', 'Caja')
+            ->whereHas('familia.insumo', fn ($consulta) => $consulta->where('nombre', 'Varios'))
+            ->first();
+
+        return $item === null ? null : $this->precioAccesorio($item->id);
+    }
+
+    /**
+     * Bloque "Costo Envase" de la hoja DPK (filas 30 a 39): lo que cuesta
+     * confeccionar, los accesorios, las cajas, el flete y los extras. Cada
+     * renglon en valor x 1000 mts (N), por kilo (P) y por millar (R).
+     *
+     * @return array<string, mixed>|null
+     */
+    #[Computed]
+    public function calculoEnvase(): ?array
+    {
+        $ancho = (float) ($this->bobinas['ancho'] ?: 0);
+        $envases = (float) ($this->bobinas['envases'] ?: 0);
+        $cantidad = (float) ($this->bobinas['cantidad'] ?: 0);
+        $peso = (float) ($this->bobinas['peso'] ?: 0);
+        $kgrs = array_sum($this->kgrsPorMilMetros);
+
+        if (! $this->esDpk || $ancho <= 0 || $envases <= 0 || $cantidad <= 0 || $kgrs <= 0 || $peso <= 0) {
+            return null;
+        }
+
+        $zipper = ($this->bobinas['zipper'] ?? '') === 'Si' ? 1 : 0;
+        $troquel = ($this->bobinas['troquel'] ?? '') === 'Si' ? 1 : 0;
+        $pico = ($this->bobinas['pico'] ?? '') === 'Si' ? 1 : 0;
+        $porKg = fn (?float $n) => $n === null ? null : $n / $kgrs;
+
+        // Costo del material ya costeado (P29 de la hoja), base de los scrap de confeccion.
+        $costoBobinaKg = $this->costoBobinaKg();
+        $renglones = [];
+
+        // Fila 30: confeccionadora. Golpes por minuto segun el ancho, menos los que resta el zipper.
+        $confeccion = Operativo::delSector(Operativo::CONFECCION);
+        $golpes = (VariableCosto::porTramoDesde(VariableCosto::GOLPES_DOYPACK, $ancho) ?? 0)
+            - $zipper * (VariableCosto::porTramoDesde(VariableCosto::GOLPES_ZIPPER, $ancho) ?? 0);
+        $horasProd = $golpes > 0 ? $envases / ($golpes * 60) : 0;
+        $prep = (float) ($confeccion?->setup_horas ?? 0);
+        $confMil = $confeccion === null || $golpes <= 0 ? null : (($prep + $horasProd) * (float) $confeccion->valor_hora) / ($cantidad / 1000);
+        $renglones['confeccionadora'] = ['flag' => $golpes, 'prep' => $prep, 'prod' => $horasProd, 'valorHora' => $confeccion?->valor_hora, 'valorMil' => $confMil, 'valorKg' => $porKg($confMil), 'millar' => $this->porMillar($confMil)];
+
+        // Filas 31, 32 y 35: accesorios por millar, con sus unidades de scrap. Se cargan tal cual al millar.
+        foreach ([
+            'zipper' => [$zipper, $this->bobinas['tipo_zipper_id'] ?? null, Parametro::DPK_SCRAP_ZIPPER],
+            'troquel' => [$troquel, $this->bobinas['tipo_troquel_id'] ?? null, Parametro::DPK_SCRAP_TROQUEL],
+            'picos' => [$pico, $this->bobinas['tipo_pico_id'] ?? null, Parametro::DPK_SCRAP_PICO],
+        ] as $clave => [$flag, $itemId, $parametroScrap]) {
+            $precio = $this->precioAccesorio($itemId);
+            $scrapUnidades = Parametro::valor($parametroScrap);
+            $millar = $flag && $precio !== null ? $precio * (1000 + $scrapUnidades) : ($flag ? null : 0.0);
+            $renglones[$clave] = ['flag' => $flag, 'precio' => $precio, 'scrap' => $scrapUnidades, 'valorMil' => $millar === null ? null : $millar / ($ancho / 100), 'valorKg' => $millar === null ? null : $porKg($millar / ($ancho / 100)), 'millar' => $millar];
+        }
+
+        // Fila 33: scrap de confeccion, % del costo del material por millar.
+        $scrapConfPct = (float) ($confeccion?->scrap_pct ?? 0);
+        $scrapConfMil = $costoBobinaKg * $scrapConfPct / 100 / (100000 / $ancho) * 1000;
+        $baseScrapConf = $this->millarHastaRefilado() + ($renglones['confeccionadora']['millar'] ?? 0) + ($renglones['zipper']['millar'] ?? 0);
+        $renglones['scrap_confeccion'] = ['pct' => $scrapConfPct, 'valorMil' => $scrapConfMil, 'valorKg' => $porKg($scrapConfMil), 'millar' => $baseScrapConf * $scrapConfPct / 100];
+
+        // Fila 34: picotera. "Produccion" son golpes por minuto. Solo si el envase lleva pico.
+        $picotera = Operativo::delSector('Picotera');
+        $golpesPic = (float) ($picotera?->produccion_mts_hora ?: 0);
+        $horasPic = $golpesPic > 0 ? $envases / ($golpesPic * 60) : 0;
+        $picMil = $picotera === null || $golpesPic <= 0 ? null : (((float) $picotera->setup_horas + $horasPic) * (float) $picotera->valor_hora) / ($cantidad / 1000);
+        $renglones['picotera'] = ['flag' => $pico, 'prep' => $picotera?->setup_horas, 'prod' => $horasPic, 'valorHora' => $picotera?->valor_hora, 'valorMil' => $picMil === null ? null : $picMil * $pico, 'valorKg' => $picMil === null ? null : $porKg($picMil) * $pico, 'millar' => $picMil === null ? null : $this->porMillar($picMil) * $pico];
+
+        // Fila 36: scrap de picotera.
+        $scrapPicPct = (float) ($picotera?->scrap_pct ?? 0);
+        $scrapPicMil = $costoBobinaKg * $scrapPicPct / 100 / (100000 / $ancho) * 1000 * $pico;
+        $baseScrapPic = $baseScrapConf + ($renglones['troquel']['millar'] ?? 0) + $renglones['scrap_confeccion']['millar'] + ($renglones['picotera']['millar'] ?? 0) + ($renglones['picos']['millar'] ?? 0);
+        $renglones['scrap_picotera'] = ['pct' => $scrapPicPct, 'valorMil' => $scrapPicMil, 'valorKg' => $porKg($scrapPicMil), 'millar' => $baseScrapPic * $scrapPicPct / 100 * $pico];
+
+        // Fila 37: cajas. Envases por caja segun el ancho.
+        $porCaja = VariableCosto::porTramoDesde(VariableCosto::ENVASES_CAJA, $ancho) ?? 0;
+        $precioCaja = $this->precioCaja();
+        $cajaMillar = $precioCaja === null || $porCaja <= 0 ? null : $precioCaja * 1000 / $porCaja;
+        $renglones['caja'] = ['porCaja' => $porCaja, 'precio' => $precioCaja, 'valorMil' => $cajaMillar === null ? null : $cajaMillar / ($ancho / 100), 'valorKg' => $cajaMillar === null ? null : $porKg($cajaMillar / ($ancho / 100)), 'millar' => $cajaMillar];
+
+        // Fila 38: flete de todas las entregas, por kilo y por millar.
+        $fleteUsd = array_sum(array_map(fn (array $f) => $f['usd'] ?? 0, $this->calculoFletes));
+        $renglones['flete'] = ['usd' => $fleteUsd, 'valorMil' => null, 'valorKg' => $fleteUsd / $peso, 'millar' => $fleteUsd / $envases * 1000];
+
+        // Fila 39: extras, un importe suelto en U$S.
+        $extras = ($this->bobinas['extras'] ?? '') === 'Si' ? (float) ($this->bobinas['extras_usd'] ?: 0) : 0.0;
+        $renglones['extras'] = ['usd' => $extras, 'valorMil' => null, 'valorKg' => $extras / $peso, 'millar' => $extras / $envases * 1000];
+
+        $envaseKg = array_sum(array_map(fn (array $r) => $r['valorKg'] ?? 0, $renglones));
+        $envaseMillar = array_sum(array_map(fn (array $r) => $r['millar'] ?? 0, $renglones));
+
+        return [
+            'renglones' => $renglones,
+            'costoBobinaKg' => $costoBobinaKg,
+            'costoBobinaMillar' => $this->millarHastaRefilado(),
+            'costoEnvaseKg' => $envaseKg,
+            'costoEnvaseMillar' => $envaseMillar,
+        ];
+    }
+
+    /**
+     * Costo del material por kilo (P29 de la hoja DPK): todos los bloques
+     * hasta el scrap, sin el flete (que en el DPK va con el envase).
+     */
+    private function costoBobinaKg(): float
+    {
+        return $this->valorKgAcumulado() + ($this->valorKgScrap() ?? 0);
+    }
+
+    /**
+     * Valor x 1000 mts del material scrap (N28): el % sobre el costo por kilo,
+     * llevado a metros.
+     */
+    private function valorKgScrapDpkMil(): float
+    {
+        return ($this->valorKgScrap() ?? 0) * array_sum($this->kgrsPorMilMetros);
+    }
+
+    /**
+     * Suma por millar de los renglones de material, impresion, laminacion,
+     * refilado y scrap (R16:R28 de la hoja DPK).
+     */
+    private function millarHastaRefilado(): float
+    {
+        $mils = [];
+
+        foreach ($this->calculoProveedores as $fila) {
+            $mils[] = $fila['valorMil'] ?? 0;
+        }
+
+        $mils[] = $this->calculoReprint['valorMil'] ?? 0;
+        $mils[] = $this->calculoTintas['valorMil'] ?? 0;
+        $mils[] = $this->calculoLimpieza['valorMil'] ?? 0;
+        $mils[] = $this->calculoLaminacion['laminadoMil'] ?? 0;
+        $mils[] = $this->calculoLaminacion['slMil'] ?? 0;
+        $mils[] = $this->calculoLaminacion['solvMil'] ?? 0;
+        $mils[] = $this->calculoRefilado['valorMil'] ?? 0;
+        $mils[] = $this->valorKgScrapDpkMil();
+
+        $suma = 0.0;
+        foreach ($mils as $mil) {
+            $suma += $this->porMillar($mil) ?? 0;
+        }
+
+        // La tela va por envases, no por metros (R21 de la hoja).
+        $tela = $this->calculoTela;
+        $envases = (float) ($this->bobinas['envases'] ?: 0);
+        $modulos = max((float) ($this->bobinas['modulos_ancho'] ?: 1), 1);
+
+        if ($tela !== null && $envases > 0) {
+            $suma += $this->telaPorMillar();
+        }
+
+        return $suma;
+    }
+
+    /** R21 de la hoja: (tela del reprint + tela x color x colores) por millar de envases. */
+    private function telaPorMillar(): float
+    {
+        $tela = $this->calculoTela;
+        $envases = (float) ($this->bobinas['envases'] ?: 0);
+        $modulos = max((float) ($this->bobinas['modulos_ancho'] ?: 1), 1);
+        $imprime = ($this->bobinas['impresion'] ?? '') === 'Si' ? 1 : 0;
+        $colores = (float) ($this->bobinas['colores'] ?: 0);
+
+        if ($tela === null || $envases <= 0) {
+            return 0.0;
+        }
+
+        return (($tela['porColorReprint'] + $tela['porColor'] * $colores) / ($envases / 1000) * $imprime) / $modulos;
+    }
+
+    /**
+     * Rentabilidad del DPK (filas 41 a 50 de la hoja): el precio sale por
+     * millar de envases; el valor por kilo es el equivalente.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function calculoRentabilidadDpk(): ?array
+    {
+        $envase = $this->calculoEnvase;
+        $peso = (float) ($this->bobinas['peso'] ?: 0);
+        $envases = (float) ($this->bobinas['envases'] ?: 0);
+        $ancho = (float) ($this->bobinas['ancho'] ?: 0);
+
+        if ($envase === null || $peso <= 0 || $envases <= 0) {
+            return null;
+        }
+
+        $costoBrutoKg = $envase['costoBobinaKg'] + $envase['costoEnvaseKg'];
+        $costoBrutoMillar = $envase['costoBobinaMillar'] + $envase['costoEnvaseMillar'];
+
+        // A42: % plus por ancho (< 18 cm o no) y peso. A43: categoria. A44: comision.
+        $margen = VariableCosto::porTramoHasta($ancho < 18 ? VariableCosto::MARGEN_DPK_CHICO : VariableCosto::MARGEN_DPK, $peso);
+        $categoriaPct = VariableCosto::categoria($this->categoria);
+        $plus = $margen + (Parametro::valor(Parametro::CATEGORIA_EN_PRECIO) > 0 ? $categoriaPct : 0);
+        $ajusteManual = (float) $this->ajuste_categoria;
+        $comision = (float) (Vendedor::find($this->vendedor_id)?->comision($this->tipo_producto) ?? 0) + (float) $this->ajuste_vendedor;
+
+        $divisor = 1 - ($plus + $comision) / 100;
+
+        $dias = (int) ($this->pagos[1]['dias_ff'] ?? 0);
+        $financiacionPct = $dias > 0 ? VariableCosto::financiacion($dias) : 0;
+        $divisorContado = 1 - ($plus + $comision * (1 + $financiacionPct / 100)) / 100;
+
+        if ($divisor <= 0 || $divisorContado <= 0) {
+            return null;
+        }
+
+        // R46 / R48: precio bruto por millar y con ajuste. R49: el contado, con la comision financiada.
+        $precioBrutoMillar = $costoBrutoMillar / $divisor;
+        $ajusteMillar = $precioBrutoMillar * $ajusteManual / 100;
+        $contado = $costoBrutoMillar / $divisorContado + $ajusteMillar;
+        $financiacionMillar = $contado * $financiacionPct / 100;
+
+        $plusMillar = $precioBrutoMillar * $plus / 100;
+        $comisionMillar = ($precioBrutoMillar + $ajusteMillar) * $comision / 100;
+
+        // Polimeros (G45): ancho lamina x (desarrollo + extra) x colores x arranques x U$S/cm2.
+        $anchoLamina = (float) ($this->bobinas['ancho_lamina'] ?: 0);
+        $desarrollo = (float) ($this->bobinas['desarrollo'] ?: 0);
+        $polimerosUsd = $anchoLamina * ($desarrollo + Parametro::valor(Parametro::POLIMEROS_DESARROLLO_EXTRA)) * $this->coloresPorArranque() * Parametro::valor(Parametro::POLIMEROS_USD_CM2);
+
+        $aKg = fn (float $millar) => $millar * $envases / 1000 / $peso;
+
+        return [
+            'esDpk' => true,
+            'costoBruto' => $costoBrutoKg,
+            'costoBrutoMillar' => $costoBrutoMillar,
+            'costoBobinaMillar' => $envase['costoBobinaMillar'],
+            'costoEnvaseMillar' => $envase['costoEnvaseMillar'],
+            'margen' => $margen,
+            'plus' => $plus,
+            'categoriaPct' => $categoriaPct,
+            'ajusteManual' => $ajusteManual,
+            'comision' => $comision,
+            'precioBruto' => $aKg($precioBrutoMillar),
+            'precioBrutoMillar' => $precioBrutoMillar,
+            'contado' => $contado,
+            'contadoKg' => $aKg($contado),
+            'plusKg' => $aKg($plusMillar),
+            'comisionKg' => $aKg($comisionMillar),
+            'plusMillar' => $plusMillar,
+            'comisionMillar' => $comisionMillar,
+            'ajusteMillar' => $ajusteMillar,
+            'plusTotal' => $plusMillar * $envases / 1000,
+            'comisionTotal' => $comisionMillar * $envases / 1000,
+            'rentabilidadTotal' => ($contado - $costoBrutoMillar - $comisionMillar) * $envases / 1000,
+            'polimerosUsd' => $polimerosUsd,
+            'polimerosKg' => $polimerosUsd / $peso,
+            'dias' => $dias,
+            'financiacionPct' => $financiacionPct,
+            'financiacionKg' => $financiacionMillar,
+            'aDiasMillar' => $contado + $financiacionMillar,
+            'aDiasKg' => $aKg($contado + $financiacionMillar),
+        ];
+    }
+
+    /**
+     * Bloques del tab de Costos del DPK: los mismos que bobinas mas el costo
+     * del envase, con la columna "Valor x millar".
+     *
+     * @return list<array{titulo: string, columnas: list<string>, filas: list<list<string>>}>
+     */
+    #[Computed]
+    public function seccionesDpk(): array
+    {
+        $secciones = [];
+        $usdM = fn (?float $valor) => $this->usd($valor);
+
+        // Materiales: la fila 15-17 mas el millar.
+        $filas = [];
+        foreach ($this->calculoProveedores as $fila) {
+            $filas[] = $fila === null
+                ? array_fill(0, 12, '-')
+                : [
+                    $this->num(Parametro::valor(Parametro::MATERIAL_FACTOR), 0), $fila['item']->nombre, $this->num($fila['mic'], 0), $this->usd($fila['costo']),
+                    $this->num($fila['metros'], 0), $this->num($fila['kgrsTrabajar']), $this->num($fila['kgrsLamina']), $this->num($fila['kgrsRefilado']),
+                    $this->usd($fila['valorMil']), $this->usd($fila['valorKg']), $usdM($this->porMillar($fila['valorMil'])), $this->incidencia($this->porMillar($fila['valorMil'])),
+                ];
+        }
+        $secciones[] = ['titulo' => 'Proveedores', 'columnas' => ['', 'Detalle', 'Mic', 'Valor x kgrs', 'Mts a trabajar', 'Kgrs a trabajar', 'Kgrs x 1000 mts', 'Kgrs x 1000 mts', 'Valor x 1000 mts', 'Valor x kgrs', 'Valor x millar', 'Incidencia'], 'filas' => $filas];
+
+        // Impresion.
+        $imprime = ($this->bobinas['impresion'] ?? '') === 'Si' ? 1 : 0;
+        $rep = $this->calculoReprint; $tela = $this->calculoTela; $tin = $this->calculoTintas; $lim = $this->calculoLimpieza;
+        $telaMillar = $tela === null ? null : $this->telaPorMillar();
+        $secciones[] = ['titulo' => 'Impresión y Reprint', 'columnas' => ['', 'Detalle', 'Prep', 'Prod', 'Valor hs', 'Kgrs x 1000 mts', 'Valor x 1000 mts', 'Valor kgrs', 'Valor x millar', 'Incidencia'], 'filas' => [
+            [(string) $imprime, 'Reprint', $this->num($rep['prep'] ?? null), $this->num($rep['prod'] ?? null), $this->usd($rep['valorHora'] ?? null), '', $this->usd($rep['valorMil'] ?? null), $this->usd($rep['valorKg'] ?? null), $usdM($this->porMillar($rep['valorMil'] ?? null)), $this->incidencia($this->porMillar($rep['valorMil'] ?? null))],
+            [(string) $imprime, 'Tela Doble Fax', '', '', 'x Color U$S', $this->num($tela['porColor'] ?? null, 3), '', $this->usd($tela['valorKg'] ?? null), $usdM($telaMillar), $this->incidencia($telaMillar)],
+            [(string) $imprime, 'Tintas + Diluyentes', '', '', 'Valor grs/mts2', $this->num($tin['grsM2'] ?? null, 3), $this->usd($tin['valorMil'] ?? null), $this->usd($tin['valorKg'] ?? null), $usdM($this->porMillar($tin['valorMil'] ?? null)), $this->incidencia($this->porMillar($tin['valorMil'] ?? null))],
+            [(string) $imprime, 'Limpieza Diluyentes', (float) ($this->bobinas['cantidad'] ?: 0) > 0 ? $this->num(Parametro::litrosLimpieza((float) $this->bobinas['cantidad']), 0) : '-', '', 'Valor Lts', $this->num($lim['precioLitro'] ?? null, 3), $this->usd($lim['valorMil'] ?? null), $this->usd($lim['valorKg'] ?? null), $usdM($this->porMillar($lim['valorMil'] ?? null)), $this->incidencia($this->porMillar($lim['valorMil'] ?? null))],
+        ]];
+
+        // Laminacion.
+        $c = $this->calculoLaminacion;
+        ['sinSolvente' => $sin, 'conSolvente' => $con] = $this->pasadasDeLaminacion();
+        $secciones[] = ['titulo' => 'Laminación y solventes', 'columnas' => ['', 'Detalle', 'Prep', 'Prod', 'Valor hs', 'Kgrs x 1000 mts', 'Valor x 1000 mts', 'Valor kgrs', 'Valor x millar', 'Incidencia'], 'filas' => [
+            [(string) ($sin + $con), 'Costo laminado', $this->num($c['prep'] ?? null), $this->num($c['prod'] ?? null), $this->usd($c['valorHora'] ?? null), '', $this->usd($c['laminadoMil'] ?? null), $this->usd($c['laminadoKg'] ?? null), $usdM($this->porMillar($c['laminadoMil'] ?? null)), $this->incidencia($this->porMillar($c['laminadoMil'] ?? null))],
+            [(string) $sin, 'Sin solvente', '', '', 'Valor grs/mts2', $this->num($c['slGrsM2'] ?? null, 4), $this->usd($c['slMil'] ?? null), $this->usd($c['slKg'] ?? null), $usdM($this->porMillar($c['slMil'] ?? null)), $this->incidencia($this->porMillar($c['slMil'] ?? null))],
+            [(string) $con, 'Con solvente', '', '', 'Valor grs/mts2', $this->num($c['solvGrsM2'] ?? null, 4), $this->usd($c['solvMil'] ?? null), $this->usd($c['solvKg'] ?? null), $usdM($this->porMillar($c['solvMil'] ?? null)), $this->incidencia($this->porMillar($c['solvMil'] ?? null))],
+        ]];
+
+        // Refilado y scrap.
+        $ref = $this->calculoRefilado;
+        $scrapMil = $this->valorKgScrapDpkMil();
+        $secciones[] = ['titulo' => 'Refilado y Material Scrap', 'columnas' => ['', 'Detalle', 'Prep', 'Prod', 'Valor hs', 'Valor x 1000 mts', 'Valor kgrs', 'Valor x millar', 'Incidencia'], 'filas' => [
+            [($this->bobinas['refilado'] ?? 'Si') === 'Si' ? '1' : '0', 'Refilado', $this->num($ref['prep'] ?? null), $this->num($ref['prod'] ?? null), $this->usd($ref['valorHora'] ?? null), $this->usd($ref['valorMil'] ?? null), $this->usd($ref['valorKg'] ?? null), $usdM($this->porMillar($ref['valorMil'] ?? null)), $this->incidencia($this->porMillar($ref['valorMil'] ?? null))],
+            [$this->num((float) (Operativo::delSector(Operativo::REBOBINADO)?->scrap_pct ?? 0), 0).'%', 'Material Scrap', '', '', '', $this->usd($scrapMil > 0 ? $scrapMil : null), $this->usd($this->valorKgScrap()), $usdM($scrapMil > 0 ? $this->porMillar($scrapMil) : null), $this->incidencia($scrapMil > 0 ? $this->porMillar($scrapMil) : null)],
+        ]];
+
+        // Costo envase.
+        $e = $this->calculoEnvase;
+        $r = $e['renglones'] ?? [];
+        $fila = fn (string $flag, string $detalle, string $c1, string $c2, string $c3, ?array $x) => [$flag, $detalle, $c1, $c2, $c3, $this->usd($x['valorMil'] ?? null), $this->usd($x['valorKg'] ?? null), $usdM($x['millar'] ?? null), $this->incidencia($x['millar'] ?? null)];
+        $secciones[] = ['titulo' => 'Costo envase', 'columnas' => ['', 'Detalle', 'Prep / dato', 'Prod / scrap', 'Valor hs / unitario', 'Valor x 1000 mts', 'Valor kgrs', 'Valor x millar', 'Incidencia'], 'filas' => [
+            $fila($this->num($r['confeccionadora']['flag'] ?? null, 0), 'Costo confeccionadora', $this->num($r['confeccionadora']['prep'] ?? null), $this->num($r['confeccionadora']['prod'] ?? null), $this->usd($r['confeccionadora']['valorHora'] ?? null), $r['confeccionadora'] ?? null),
+            $fila((string) ($r['zipper']['flag'] ?? 0), 'Zipper', 'scrap '.$this->num($r['zipper']['scrap'] ?? null, 0), '', $this->usd($r['zipper']['precio'] ?? null, 4), $r['zipper'] ?? null),
+            $fila((string) ($r['troquel']['flag'] ?? 0), 'Troquel', 'scrap '.$this->num($r['troquel']['scrap'] ?? null, 0), '', $this->usd($r['troquel']['precio'] ?? null, 4), $r['troquel'] ?? null),
+            $fila($this->num($r['scrap_confeccion']['pct'] ?? null, 0).'%', 'Scrap confeccionadora', '', '', '', $r['scrap_confeccion'] ?? null),
+            $fila((string) ($r['picotera']['flag'] ?? 0), 'Costo picotera', $this->num($r['picotera']['prep'] ?? null), $this->num($r['picotera']['prod'] ?? null), $this->usd($r['picotera']['valorHora'] ?? null), $r['picotera'] ?? null),
+            $fila((string) ($r['picos']['flag'] ?? 0), 'Picos', 'scrap '.$this->num($r['picos']['scrap'] ?? null, 0), '', $this->usd($r['picos']['precio'] ?? null, 4), $r['picos'] ?? null),
+            $fila($this->num($r['scrap_picotera']['pct'] ?? null, 0).'%', 'Scrap picotera', '', '', '', $r['scrap_picotera'] ?? null),
+            $fila($this->num($r['caja']['porCaja'] ?? null, 0), 'x Caja', 'envases por caja', '', $this->usd($r['caja']['precio'] ?? null, 4), $r['caja'] ?? null),
+            $fila('1', 'Flete', '', '', $this->usd($r['flete']['usd'] ?? null), $r['flete'] ?? null),
+            $fila(($this->bobinas['extras'] ?? '') === 'Si' ? '1' : '0', 'Extras', '', '', $this->usd($r['extras']['usd'] ?? null), $r['extras'] ?? null),
+        ]];
+
+        return $secciones;
     }
 
     /**
@@ -1688,7 +2103,8 @@ class Form extends Component
     public function costoFinal(): array
     {
         $r = $this->calculoRentabilidad;
-        $filas = [['Valor por Kgrs al contado', '', '', '', $r === null ? '-' : $this->usd($r['contado'])]];
+        $unidad = $this->esDpk ? 'Millar' : 'Kgrs';
+        $filas = [['Valor por '.$unidad.' al contado', '', '', '', $r === null ? '-' : $this->usd($r['contado'])]];
 
         foreach ($this->pagos as $pago) {
             $dias = (int) ($pago['dias_ff'] ?? 0);
@@ -1701,7 +2117,7 @@ class Form extends Component
             $financiacion = $r === null ? null : $r['contado'] * $pct / 100;
 
             $filas[] = [
-                'Valor por Kgrs a',
+                'Valor por '.$unidad.' a',
                 (string) $dias,
                 $this->num($pct).'%',
                 $this->usd($financiacion),
@@ -1786,6 +2202,12 @@ class Form extends Component
      */
     private function recalcularAnchos(): void
     {
+        if ($this->esDpk) {
+            $this->recalcularMedidasDpk();
+
+            return;
+        }
+
         $ancho = (float) ($this->bobinas['ancho'] ?: 0);
         $modulos = (float) ($this->bobinas['modulos_ancho'] ?: 0);
 
@@ -1803,6 +2225,81 @@ class Form extends Component
         $this->bobinas['ancho_lamina'] = $this->sinCerosDeMas($refilado + $this->anchoLaminaExtra);
 
         $this->recalcularPeso();
+    }
+
+    /**
+     * Confeccion DPK. Los calculos de material, impresion y laminacion son
+     * los mismos que bobinas; cambian las medidas y se suma el costo del envase.
+     */
+    #[Computed]
+    public function esDpk(): bool
+    {
+        return $this->tipo_producto === 'confeccion-dpk';
+    }
+
+    /**
+     * Medidas del DPK (D8:D10, N8, N9, J5 de la hoja): la lamina se arma con
+     * el alto x 2 mas el fuelle, y la cantidad de metros sale de los envases
+     * por el ancho.
+     */
+    private function recalcularMedidasDpk(): void
+    {
+        $ancho = (float) ($this->bobinas['ancho'] ?: 0);
+        $alto = (float) ($this->bobinas['alto'] ?: 0);
+        $fuelle = (float) ($this->bobinas['fuelle'] ?: 0);
+        $modulos = max((float) ($this->bobinas['modulos_ancho'] ?: 1), 1);
+        $calle = (float) ($this->bobinas['calle'] ?: 0);
+        $modulosDesarrollo = (float) ($this->bobinas['modulos_desarrollo'] ?: 0);
+        $envases = (float) ($this->bobinas['envases'] ?: 0);
+
+        // N8 y J5: el paso es el ancho del envase; la cantidad son los envases por el ancho en metros.
+        $this->bobinas['paso'] = $ancho > 0 ? $this->sinCerosDeMas($ancho) : '';
+        $this->bobinas['cantidad'] = $ancho > 0 && $envases > 0 ? $this->sinCerosDeMas($envases * $ancho / 100) : '';
+
+        // O7 / N9: desarrollo = paso x modulos de desarrollo.
+        $this->bobinas['desarrollo'] = $ancho > 0 && $modulosDesarrollo > 0 ? $this->sinCerosDeMas($ancho * $modulosDesarrollo) : '';
+
+        if ($alto <= 0) {
+            $this->bobinas['ancho_desplegado'] = '';
+            $this->bobinas['ancho_refilado'] = '';
+            $this->bobinas['ancho_lamina'] = '';
+            $this->bobinas['peso'] = '';
+            $this->recalcularScrap();
+
+            return;
+        }
+
+        // D8: el envase abierto. D9: por los modulos en el ancho, mas la calle. D10: mas el extra de lamina.
+        $desplegado = $alto * 2 + $fuelle;
+        $refilado = $desplegado * $modulos + $calle;
+
+        $this->bobinas['ancho_desplegado'] = $this->sinCerosDeMas($desplegado);
+        $this->bobinas['ancho_refilado'] = $this->sinCerosDeMas($refilado);
+        $this->bobinas['ancho_lamina'] = $this->sinCerosDeMas($refilado + Parametro::valor(Parametro::DPK_ANCHO_LAMINA_EXTRA));
+
+        $this->recalcularPeso();
+        $this->recalcularScrap();
+    }
+
+    #[Computed]
+    public function anchoLaminaExtraDpk(): float
+    {
+        return Parametro::valor(Parametro::DPK_ANCHO_LAMINA_EXTRA);
+    }
+
+    /**
+     * El desarrollo del DPK tiene que ser una manga cargada (N9 de la hoja).
+     */
+    public function ayudaDesarrollo(): ?string
+    {
+        if (! $this->esDpk || ($this->bobinas['desarrollo'] ?? '') === '' || Parametro::valor(Parametro::DPK_MANGA_EXACTA) <= 0) {
+            return null;
+        }
+
+        $desarrollo = (float) $this->bobinas['desarrollo'];
+        $existe = Ajuste::opciones('mangas')->contains(fn (float $manga) => abs($manga - $desarrollo) < 0.001);
+
+        return $existe ? null : 'No hay una manga de '.$this->sinCerosDeMas($desarrollo).' cm en Ajustes: revisá los módulos de desarrollo o cargá la manga.';
     }
 
     private function sinCerosDeMas(float $valor): string
@@ -2053,6 +2550,20 @@ class Form extends Component
             'blanco' => '',
             'ancho_refilado' => '',
             'ancho_lamina' => '',
+            // Confeccion DPK: medidas del envase y accesorios.
+            'alto' => '',
+            'fuelle' => '',
+            'envases' => '',
+            'ancho_desplegado' => '',
+            'calle' => '',
+            'zipper' => 'No',
+            'tipo_zipper_id' => '',
+            'troquel' => 'No',
+            'tipo_troquel_id' => '',
+            'pico' => 'No',
+            'tipo_pico_id' => '',
+            'extras' => 'No',
+            'extras_usd' => '',
             'impresion_scrap' => '',
             'impresion_scrap_usd' => '',
             'laminacion_scrap' => '',
@@ -2166,12 +2677,18 @@ class Form extends Component
                 'tipo_producto' => $this->tipo_producto !== '' ? self::TIPOS_PRODUCTO[$this->tipo_producto] ?? '' : '',
                 'producto' => $this->bobinas['producto_id'] ? (string) ContactoProducto::find($this->bobinas['producto_id'])?->nombre : '',
                 'materiales' => implode(' + ', $materiales),
-                'anchos' => $anchoRefilado > 0 ? $num($anchoRefilado * 10).' mm'.($buje !== '' ? ' Buje '.$buje.'´´' : '') : '',
+                'anchos' => $this->esDpk
+                    ? ((float) ($this->bobinas['ancho'] ?: 0) > 0 && (float) ($this->bobinas['alto'] ?: 0) > 0
+                        ? $num((float) $this->bobinas['ancho'], 1).' x '.$num((float) $this->bobinas['alto'], 1).' cm'.((float) ($this->bobinas['fuelle'] ?: 0) > 0 ? ' + fuelle '.$num((float) $this->bobinas['fuelle'], 1).' cm' : '')
+                        : '')
+                    : ($anchoRefilado > 0 ? $num($anchoRefilado * 10).' mm'.($buje !== '' ? ' Buje '.$buje.'´´' : '') : ''),
                 'paso' => $paso > 0 ? $num($paso * 10).' mm' : '',
                 'impresion' => $impresion,
                 'laminacion' => $laminacion,
-                'cantidad' => $peso > 0 ? $num($peso).' kg +/- '.$num(Parametro::valor(Parametro::TOLERANCIA_PCT)).'%' : '',
-                'precio' => $r !== null ? 'U$S '.$num($r['contado'], 2).' por kg + IVA' : '',
+                'cantidad' => $this->esDpk
+                    ? ((float) ($this->bobinas['envases'] ?: 0) > 0 ? $num((float) $this->bobinas['envases']).' envases +/- '.$num(Parametro::valor(Parametro::TOLERANCIA_PCT)).'%' : '')
+                    : ($peso > 0 ? $num($peso).' kg +/- '.$num(Parametro::valor(Parametro::TOLERANCIA_PCT)).'%' : ''),
+                'precio' => $r !== null ? 'U$S '.$num($r['contado'], 2).($this->esDpk ? ' por millar + IVA' : ' por kg + IVA') : '',
             ],
             'entregas' => $entregas,
         ];
@@ -2267,6 +2784,16 @@ class Form extends Component
         }
     }
 
+    /**
+     * @return Collection<int, string>
+     */
+    private function itemsDeInsumo(string $insumo): Collection
+    {
+        return InsumoItem::whereHas('familia.insumo', fn ($consulta) => $consulta->where('nombre', $insumo))
+            ->orderBy('nombre')
+            ->pluck('nombre', 'id');
+    }
+
     public function render()
     {
         $this->completarPagos();
@@ -2280,6 +2807,10 @@ class Form extends Component
             'vendedores' => Vendedor::orderBy('nombre')->get(['id', 'nombre']),
             'mangas' => Ajuste::opciones('mangas'),
             'bujes' => Ajuste::opciones('bujes'),
+            // Accesorios del DPK: los items de cada insumo.
+            'tiposZipper' => $this->itemsDeInsumo('Zipper'),
+            'tiposTroquel' => $this->itemsDeInsumo('Troquel'),
+            'tiposPico' => $this->itemsDeInsumo('Picos'),
             // Dias de financiacion de Configuración > Variables Costos.
             'diasFf' => VariableCosto::listado(VariableCosto::FINANCIACION)->pluck('clave')->all(),
             // Tramos de kg / pallets de Configuración > Flete Insumos.

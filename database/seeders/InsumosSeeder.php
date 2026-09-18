@@ -23,6 +23,8 @@ class InsumosSeeder extends Seeder
         'Tela' => 'Tela',
         'Zipper' => 'Zipper',
         'Picos' => 'Pico',
+        'Troquel' => 'Troquel',
+        'Varios' => 'Ítem',
     ];
 
     /**
@@ -126,6 +128,8 @@ class InsumosSeeder extends Seeder
     private const VARIOS = [
         'Zipper' => ['Zipper' => ['A definir', ['Zipper' => 0.0448]]],
         'Picos' => ['Picos' => ['A definir', ['Pico' => 0.0302]]],
+        'Troquel' => ['Troquel' => ['A definir', ['Troquel' => 0.015]]],
+        'Varios' => ['Cajas' => ['A definir', ['Caja' => 0.3933]]],
     ];
 
     public function run(): void

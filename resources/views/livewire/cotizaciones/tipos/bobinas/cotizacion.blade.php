@@ -5,15 +5,24 @@
     $c = $this->condicionesDeVenta;
     $aprobada = $guardada?->estado === \App\Models\Cotizacion::APROBADA;
 
-    $filas = [
-        ['materiales', 'Materiales', 'Bopp Mate de 20 mic + Pe Blanco de 45 mic'],
-        ['anchos', 'Anchos de bobina', '580 mm Buje 3´´'],
-        ['paso', 'Paso', '580 mm'],
-        ['impresion', 'Impresión', '8 colores'],
-        ['laminacion', 'Laminación', 'Libre de solventes Apto alimentos'],
-        ['cantidad', 'Cantidad', '2.146 kg +/- 10%'],
-        ['precio', 'Precio', 'U$S 7,99 por kg + IVA'],
-    ];
+    $filas = $this->esDpk
+        ? [
+            ['materiales', 'Materiales', 'Poliester Cristal de 12 mic + Polietileno Dpk de 130 mic'],
+            ['anchos', 'Medidas', '15 x 22 cm + fuelle 8 cm'],
+            ['impresion', 'Impresión', '4 colores'],
+            ['laminacion', 'Laminación', 'Libre de solventes Apto alimentos'],
+            ['cantidad', 'Cantidad', '30.000 envases +/- 10%'],
+            ['precio', 'Precio', 'U$S 164,06 por millar + IVA'],
+        ]
+        : [
+            ['materiales', 'Materiales', 'Bopp Mate de 20 mic + Pe Blanco de 45 mic'],
+            ['anchos', 'Anchos de bobina', '580 mm Buje 3´´'],
+            ['paso', 'Paso', '580 mm'],
+            ['impresion', 'Impresión', '8 colores'],
+            ['laminacion', 'Laminación', 'Libre de solventes Apto alimentos'],
+            ['cantidad', 'Cantidad', '2.146 kg +/- 10%'],
+            ['precio', 'Precio', 'U$S 7,99 por kg + IVA'],
+        ];
 @endphp
 
 <section class="rounded-lg bg-white shadow-sm">

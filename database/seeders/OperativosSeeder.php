@@ -16,9 +16,11 @@ class OperativosSeeder extends Seeder
         Operativo::IMPRESION => [58.46, 20000, 1.5, 0],
         Operativo::LAMINACION => [41.35, 16000, 0.5, 0],
         Operativo::REBOBINADO => [39.54, 8000, 0, 5],
-        Operativo::CONFECCION => [60.01, null, 0, 15],
+        // Confeccion: la hoja DPK usa 1 hora de setup (E30) y la produccion sale de la tabla de golpes.
+        Operativo::CONFECCION => [60.01, null, 1, 15],
         // Tabla!A9:E10. Picotera: la planilla dice 20 de produccion (golpes por minuto, no metros).
         'Troquel' => [0, null, 0, 0],
+        // Picotera: "produccion" son golpes por minuto, no metros por hora.
         'Picotera' => [20.00, 20, 0.5, 5],
     ];
 

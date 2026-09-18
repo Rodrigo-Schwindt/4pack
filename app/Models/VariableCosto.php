@@ -20,6 +20,18 @@ class VariableCosto extends Model
 
     public const FINANCIACION = 'financiacion';
 
+    public const GOLPES_DOYPACK = 'golpes_doypack';
+
+    public const GOLPES_POUCH = 'golpes_pouch';
+
+    public const GOLPES_ZIPPER = 'golpes_zipper';
+
+    public const MARGEN_DPK_CHICO = 'margen_dpk_chico';
+
+    public const MARGEN_DPK = 'margen_dpk';
+
+    public const ENVASES_CAJA = 'envases_caja';
+
     /** Clave del descuento por volumen que aplica por encima del ultimo tramo. */
     public const RESTO = 'resto';
 
@@ -33,6 +45,12 @@ class VariableCosto extends Model
         self::VOLUMEN => ['Descuento por volumen', 'Hasta kg', 'Se suma al margen según el peso. La fila "resto" aplica por encima del último tramo; los negativos descuentan.'],
         self::CATEGORIA => ['Categoría de cliente', 'Categoría', 'Porcentaje según la categoría (A, B, C...) del cliente.'],
         self::FINANCIACION => ['Financiación por días', 'Días FF', 'Recargo sobre el valor al contado según los días de pago.'],
+        self::GOLPES_DOYPACK => ['Confección: golpes por minuto (Doypack)', 'Desde ancho (cm)', 'Velocidad de la confeccionadora según el ancho del envase. Aplica el tramo de mayor "desde" que no supere el ancho.'],
+        self::GOLPES_POUCH => ['Confección: golpes por minuto (Pouch)', 'Desde ancho (cm)', 'Igual que Doypack, para los pouch.'],
+        self::GOLPES_ZIPPER => ['Confección: golpes que resta el zipper', 'Desde ancho (cm)', 'Se restan a los golpes por minuto cuando el envase lleva zipper.'],
+        self::MARGEN_DPK_CHICO => ['Margen confección DPK < 18 cm', 'Hasta kg', '% Plus según el peso, para envases de menos de 18 cm de ancho. La fila "resto" aplica por encima del último tramo.'],
+        self::MARGEN_DPK => ['Margen confección DPK ≥ 18 cm', 'Hasta kg', '% Plus según el peso, para envases de 18 cm o más.'],
+        self::ENVASES_CAJA => ['Envases por caja', 'Desde ancho (cm)', 'Cuántos envases entran en una caja según el ancho. Aplica el tramo de mayor "desde" que no supere el ancho.'],
     ];
 
     protected $table = 'variables_costos';
@@ -94,14 +112,45 @@ class VariableCosto extends Model
      */
     public static function descuentoVolumen(float $kg): float
     {
-        $tramos = static::listado(self::VOLUMEN);
+        return static::porTramoHasta(self::VOLUMEN, $kg, estricto: true);
+    }
+
+    /**
+     * Tablas "hasta": el primer tramo cuyo tope alcanza al valor (o lo supera,
+     * si es estricto), y si ninguno lo alcanza, "resto".
+     */
+    public static function porTramoHasta(string $tipo, float $valor, bool $estricto = false): float
+    {
+        $tramos = static::listado($tipo);
 
         foreach ($tramos as $tramo) {
-            if ($tramo->clave !== self::RESTO && $kg < (float) $tramo->clave) {
+            if ($tramo->clave === self::RESTO) {
+                continue;
+            }
+
+            $tope = (float) $tramo->clave;
+
+            if ($estricto ? $valor < $tope : $valor <= $tope) {
                 return (float) $tramo->valor;
             }
         }
 
         return (float) ($tramos->firstWhere('clave', self::RESTO)?->valor ?? 0);
+    }
+
+    /**
+     * Tablas "desde": el tramo de mayor arranque que no supera al valor.
+     */
+    public static function porTramoDesde(string $tipo, float $valor): ?float
+    {
+        $elegido = null;
+
+        foreach (static::listado($tipo) as $tramo) {
+            if ($tramo->clave !== self::RESTO && (float) $tramo->clave <= $valor) {
+                $elegido = (float) $tramo->valor;
+            }
+        }
+
+        return $elegido;
     }
 }

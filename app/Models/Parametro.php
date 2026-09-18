@@ -63,12 +63,29 @@ class Parametro extends Model
 
     public const OBJETIVO_TONELADAS_DIA = 'objetivo_toneladas_dia';
 
+    public const DPK_ANCHO_LAMINA_EXTRA = 'dpk_ancho_lamina_extra';
+
+    public const DPK_SL_COMPUESTO = 'dpk_sl_compuesto';
+
+    public const DPK_SL_CATALIZADOR = 'dpk_sl_catalizador';
+
+    public const DPK_SOLVENTE_FACTOR = 'dpk_solvente_factor';
+
+    public const DPK_SCRAP_ZIPPER = 'dpk_scrap_zipper';
+
+    public const DPK_SCRAP_TROQUEL = 'dpk_scrap_troquel';
+
+    public const DPK_SCRAP_PICO = 'dpk_scrap_pico';
+
+    public const DPK_MANGA_EXACTA = 'dpk_manga_exacta';
+
     /** Litros de limpieza segun los metros de la cotizacion: la escala de la planilla. */
     public const LIMPIEZA_ESCALA = [
         'limpieza_lts_base' => [0, 12],
         'limpieza_lts_30000' => [30000, 16],
         'limpieza_lts_60000' => [60000, 24],
-        'limpieza_lts_150000' => [150000, 48],
+        'limpieza_lts_120000' => [120000, 48],
+        'limpieza_lts_150000' => [150000, 64],
         'limpieza_lts_180000' => [180000, 72],
         'limpieza_lts_210000' => [210000, 96],
         'limpieza_lts_240000' => [240000, 120],
@@ -125,11 +142,22 @@ class Parametro extends Model
             self::TOLERANCIA_PCT => ['Tolerancia de la cantidad entregada (± %)', 10],
             self::OBJETIVO_TONELADAS_DIA => ['Objetivo diario de toneladas aprobadas (dashboard)', 2],
         ],
+        'Confección DPK' => [
+            self::DPK_ANCHO_LAMINA_EXTRA => ['Ancho lámina: cm que se suman al ancho refilado (DPK)', 3],
+            self::DPK_SL_COMPUESTO => ['Solvent less: proporción de compuesto (DPK)', 0.63],
+            self::DPK_SL_CATALIZADOR => ['Solvent less: proporción de catalizador (DPK)', 0],
+            self::DPK_SOLVENTE_FACTOR => ['Con solvente: factor del adhesivo (DPK)', 4],
+            self::DPK_SCRAP_ZIPPER => ['Zipper: unidades de scrap por cada millar', 100],
+            self::DPK_SCRAP_TROQUEL => ['Troquel: unidades de scrap por cada millar', 100],
+            self::DPK_SCRAP_PICO => ['Pico: unidades de scrap por cada millar', 100],
+            self::DPK_MANGA_EXACTA => ['El desarrollo tiene que coincidir con una manga cargada (1 = sí, 0 = no)', 1],
+        ],
         'Limpieza de diluyentes (litros según metros)' => [
             'limpieza_lts_base' => ['Hasta 30.000 m', 12],
             'limpieza_lts_30000' => ['Más de 30.000 m', 16],
             'limpieza_lts_60000' => ['Más de 60.000 m', 24],
-            'limpieza_lts_150000' => ['Más de 150.000 m', 48],
+            'limpieza_lts_120000' => ['Más de 120.000 m', 48],
+            'limpieza_lts_150000' => ['Más de 150.000 m', 64],
             'limpieza_lts_180000' => ['Más de 180.000 m', 72],
             'limpieza_lts_210000' => ['Más de 210.000 m', 96],
             'limpieza_lts_240000' => ['Más de 240.000 m', 120],

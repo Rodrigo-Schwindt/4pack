@@ -76,14 +76,20 @@
         <p class="mb-4 text-sm text-red-600">Para guardar hace falta el cliente, el vendedor y la fecha.</p>
     @endif
 
+    @php
+        // Bobinas y DPK comparten casi todo: el DPK solo tiene vistas propias donde cambia.
+        $conFormulario = in_array($tipo_producto, ['bobinas', 'confeccion-dpk'], true);
+        $carpeta = $tipo_producto === 'confeccion-dpk' ? 'confeccion-dpk' : 'bobinas';
+    @endphp
+
     @if ($solapa !== 'datos')
-        @if ($solapa === 'costos' && $tipo_producto === 'bobinas')
-            @include('livewire.cotizaciones.tipos.bobinas.costos')
-        @elseif ($solapa === 'cotizacion' && $tipo_producto === 'bobinas')
+        @if ($solapa === 'costos' && $conFormulario)
+            @include('livewire.cotizaciones.tipos.'.$carpeta.'.costos')
+        @elseif ($solapa === 'cotizacion' && $conFormulario)
             @include('livewire.cotizaciones.tipos.bobinas.cotizacion')
-        @elseif ($solapa === 'orden-de-compra' && $tipo_producto === 'bobinas')
+        @elseif ($solapa === 'orden-de-compra' && $conFormulario)
             @include('livewire.cotizaciones.tipos.bobinas.orden-compra')
-        @elseif ($solapa === 'entrega' && $tipo_producto === 'bobinas')
+        @elseif ($solapa === 'entrega' && $conFormulario)
             @include('livewire.cotizaciones.tipos.bobinas.entrega')
         @else
             <section class="min-h-[600px] rounded-lg bg-white p-6 shadow-sm">
@@ -145,10 +151,17 @@
                 <x-campo.select label="Laminado" modelo="bobinas.laminado" :opciones="Form::LAMINADOS" vacio="" live requerido />
 
                 @include('livewire.cotizaciones.tipos.bobinas.identificacion')
+            @elseif ($tipo_producto === 'confeccion-dpk' && ! $falta)
+                @include('livewire.cotizaciones.tipos.confeccion-dpk.identificacion')
             @endif
         </div>
 
-        @if ($tipo_producto === 'bobinas' && ! $falta)
+        @if ($conFormulario && ! $falta)
+            @if ($tipo_producto === 'confeccion-dpk')
+                <hr class="border-slate-100" />
+                @include('livewire.cotizaciones.tipos.confeccion-dpk.accesorios')
+            @endif
+
             <hr class="border-slate-100" />
             @include('livewire.cotizaciones.tipos.bobinas.materiales')
 
@@ -161,7 +174,7 @@
 
             <h2 class="{{ $tituloSeccion }}">Datos técnicos</h2>
             <hr class="border-slate-100" />
-            @include('livewire.cotizaciones.tipos.bobinas.tecnicos')
+            @include('livewire.cotizaciones.tipos.'.$carpeta.'.tecnicos')
 
             <h2 class="{{ $tituloSeccion }}">Condiciones de pago</h2>
             <hr class="border-slate-100" />

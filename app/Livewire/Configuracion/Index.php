@@ -22,7 +22,7 @@ class Index extends Component
                 ['titulo' => 'Operativos', 'descripcion' => 'Costos operativos por sector', 'icono' => 'list', 'href' => '/operativos'],
                 ['titulo' => 'Ajuste cambiario', 'descripcion' => 'Administrar Flete Insumos', 'icono' => 'list', 'href' => null],
                 ['titulo' => 'Impresión', 'descripcion' => 'Administrar Flete Insumos', 'icono' => 'list', 'href' => null],
-                ['titulo' => 'Varios', 'descripcion' => 'Administrar Flete Insumos', 'icono' => 'list', 'href' => null],
+                ['titulo' => 'Varios', 'descripcion' => 'Cajas y otros insumos sueltos', 'icono' => 'list', 'href' => ($varios = \App\Models\Insumo::where('nombre', 'Varios')->value('id')) ? '/insumos/'.$varios : '/insumos'],
                 ['titulo' => 'Variables Costos', 'descripcion' => 'Márgenes, descuentos y financiación', 'icono' => 'list', 'href' => '/variables-costos'],
                 ['titulo' => 'Ajustes', 'descripcion' => 'Valores de los selects del sistema', 'icono' => 'sliders-horizontal', 'href' => '/configuracion/ajustes'],
                 ['titulo' => 'Vendedores', 'descripcion' => 'Administrar vendedores', 'icono' => 'users', 'href' => '/vendedores'],
