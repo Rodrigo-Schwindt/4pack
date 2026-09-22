@@ -90,7 +90,7 @@ class Form extends Component
     private const MATERIALES = 3;
 
     /** Cuantas laminas lleva el producto: define cuantos materiales se cargan. */
-    public const LAMINADOS = [1 => 'Unilaminado', 2 => 'Bilaminado', 3 => 'Trilaminado'];
+    public const LAMINADOS = [1 => 'Monolaminado', 2 => 'Bilaminado', 3 => 'Trilaminado'];
 
     /**
      * Insumos que usan los costos de impresion y laminacion, por nombre de
@@ -233,7 +233,7 @@ class Form extends Component
 
         // Los calculados se rehacen con los datos y parametros de hoy.
         $this->recalcularAnchos();
-        $this->recalcularPeso();
+        $this->recalcularPesoOMetros();
         $this->recalcularScrap();
     }
 
@@ -594,6 +594,17 @@ class Form extends Component
     }
 
     /**
+     * Subzonas de la zona elegida (Quilmes -> Bernal, Don Bosco). Si no tiene,
+     * el select no se muestra y se cotiza con el precio de la zona.
+     */
+    public function subzonasDeZona(int|string|null $zonaId): Collection
+    {
+        return $zonaId
+            ? FleteZona::where('zona_padre_id', (int) $zonaId)->orderBy('nombre')->pluck('nombre', 'id')
+            : collect();
+    }
+
+    /**
      * A una zona solo le corresponden sus propias direcciones.
      */
     public function direccionesDeZona(int|string|null $zonaId): Collection
@@ -615,7 +626,7 @@ class Form extends Component
 
         $camposDeAncho = $this->esDpk
             ? ['ancho', 'alto', 'fuelle', 'modulos_ancho', 'calle', 'modulos_desarrollo', 'envases']
-            : ['ancho', 'modulos_ancho'];
+            : ['ancho', 'modulos_ancho', 'paso', 'modulos_desarrollo'];
 
         if (in_array($clave, $camposDeAncho, true)) {
             $this->recalcularAnchos();
@@ -647,12 +658,18 @@ class Form extends Component
             $this->bobinas['materiales'][$indice]['proveedor_id'] = (string) ($elegido ?? '');
         }
 
+        // Cargar el peso o los metros define cual de los dos manda.
+        if (in_array($clave, ['peso', 'cantidad'], true) && ! $this->esDpk) {
+            $this->bobinas['peso_manda'] = $clave === 'peso' ? '1' : '';
+            unset($this->pesoManda);
+        }
+
         // Peso y scrap comparten datos: se recalculan juntos.
-        $disparaCalculo = in_array($clave, ['cantidad', 'disenos', 'cambios', 'impresion_scrap', 'laminacion_scrap', 'bilaminacion_scrap'], true)
+        $disparaCalculo = in_array($clave, ['cantidad', 'peso', 'disenos', 'cambios', 'impresion_scrap', 'laminacion_scrap', 'bilaminacion_scrap'], true)
             || preg_match('/^materiales\.\d+\.(material_id|mic|proveedor_id)$/', $clave);
 
         if ($disparaCalculo) {
-            $this->recalcularPeso();
+            $this->recalcularPesoOMetros();
             $this->recalcularScrap();
         }
     }
@@ -727,20 +744,60 @@ class Form extends Component
                 $faltan[] = 'Ancho y Módulos Ancho';
             }
 
-            if ((float) ($this->bobinas['cantidad'] ?: 0) <= 0) {
+            if (! $this->pesoManda && (float) ($this->bobinas['cantidad'] ?: 0) <= 0) {
                 $faltan[] = 'Cantidad (mts)';
             }
         }
 
+        return $this->faltaCompletar(array_merge($faltan, $this->faltaDeMateriales($conAncho)));
+    }
+
+    /**
+     * En bobinas los metros son el calculado: hace falta el peso y los kilos
+     * por 1000 metros para poder sacarlos.
+     */
+    public function ayudaCantidad(): ?string
+    {
+        if ($this->esDpk || ($this->bobinas['cantidad'] ?? '') !== '') {
+            return null;
+        }
+
+        $conAncho = (float) ($this->bobinas['ancho'] ?: 0) > 0 && (float) ($this->bobinas['modulos_ancho'] ?: 0) > 0;
+        $faltan = [];
+
+        if ((float) ($this->bobinas['peso'] ?: 0) <= 0) {
+            $faltan[] = 'Peso (kg)';
+        }
+
+        if (! $conAncho) {
+            $faltan[] = 'Ancho y Módulos Ancho';
+        }
+
+        return $this->faltaCompletar(array_merge($faltan, $this->faltaDeMateriales($conAncho)));
+    }
+
+    /**
+     * Lo que falta del lado de los materiales para tener los kilos por 1000 metros.
+     *
+     * @return array<int, string>
+     */
+    private function faltaDeMateriales(bool $conAncho): array
+    {
         $elegidos = collect($this->bobinas['materiales'] ?? [])->filter(fn (array $material) => ! empty($material['material_id']));
 
         if ($elegidos->isEmpty()) {
-            $faltan[] = 'el material';
-        } elseif ($conAncho && $this->kgrsPorMilMetros === []) {
-            // Sin ancho no hay kilos: ahi lo que falta es el ancho, no esto.
-            $faltan[] = 'el mic, o el peso esp. del material en Insumos';
+            return ['el material'];
         }
 
+        // Sin ancho no hay kilos: ahi lo que falta es el ancho, no esto.
+        return $conAncho && $this->kgrsPorMilMetros === [] ? ['el mic, o el peso esp. del material en Insumos'] : [];
+    }
+
+    /**
+     * @param  array<int, string>  $faltan
+     */
+    private function faltaCompletar(array $faltan): ?string
+    {
         return $faltan === [] ? null : 'Falta completar: '.implode(', ', $faltan).'.';
     }
 
@@ -758,6 +815,48 @@ class Form extends Component
         $this->bobinas['peso'] = $cantidad > 0 && $kgrs > 0
             ? number_format($kgrs * $cantidad / 1000, 2, '.', '')
             : '';
+    }
+
+    /**
+     * La vuelta de la formula anterior: con el peso cargado, los metros que
+     * hacen falta para llegar a esos kilos.
+     *
+     *   Cantidad (mts) = peso x 1000 / Σ Kgrs x 1000 Mts
+     */
+    private function recalcularCantidad(): void
+    {
+        unset($this->itemsElegidos, $this->kgrsPorMilMetros);
+
+        $peso = (float) ($this->bobinas['peso'] ?: 0);
+        $kgrs = array_sum($this->kgrsPorMilMetros);
+
+        $this->bobinas['cantidad'] = $peso > 0 && $kgrs > 0
+            ? $this->sinCerosDeMas(round($peso * 1000 / $kgrs, 2))
+            : '';
+    }
+
+    /**
+     * Rehace el que sale calculado: si el peso lo escribio el usuario se
+     * recalculan los metros, y si no, al reves (como la planilla).
+     */
+    private function recalcularPesoOMetros(): void
+    {
+        if ($this->pesoManda) {
+            $this->recalcularCantidad();
+
+            return;
+        }
+
+        $this->recalcularPeso();
+    }
+
+    /**
+     * En el DPK los metros salen de los envases: el peso nunca manda.
+     */
+    #[Computed]
+    public function pesoManda(): bool
+    {
+        return ! $this->esDpk && ($this->bobinas['peso_manda'] ?? '') === '1';
     }
 
     /**
@@ -1135,6 +1234,16 @@ class Form extends Component
      */
     private function coloresPorArranque(): float
     {
+        $manual = trim((string) ($this->bobinas['colores_total'] ?? ''));
+
+        return $manual === '' ? $this->coloresCalculado() : (float) $manual;
+    }
+
+    /**
+     * La cuenta, sin el numero escrito a mano.
+     */
+    private function coloresCalculado(): float
+    {
         $colores = (float) ($this->bobinas['colores'] ?: 0);
         $disenos = (float) ($this->bobinas['disenos'] ?: 0);
         $variedades = (float) ($this->bobinas['variedades'] ?: 0);
@@ -1435,6 +1544,7 @@ class Form extends Component
 
         foreach ($this->entregas as $entrega) {
             $zonaId = $entrega['flete_zona_id'] ?: null;
+            $subzonaId = $entrega['flete_subzona_id'] ?: null;
             $tramoId = $entrega['flete_tramo_id'] ?: null;
 
             if (! $zonaId && ! $tramoId) {
@@ -1442,15 +1552,19 @@ class Form extends Component
             }
 
             $zona = $zonaId ? FleteZona::find($zonaId) : null;
+            $subzona = $subzonaId ? FleteZona::where('zona_padre_id', $zonaId)->find($subzonaId) : null;
             $tramo = $tramoId ? FleteTramo::find($tramoId) : null;
-            $pesos = $zona && $tramo
-                ? FletePrecio::where('flete_zona_id', $zona->id)->where('flete_tramo_id', $tramo->id)->value('precio')
+
+            // Con subzona manda su precio; si esa fila esta vacia, el de la zona.
+            $precioDe = fn (?FleteZona $de) => $de && $tramo
+                ? FletePrecio::where('flete_zona_id', $de->id)->where('flete_tramo_id', $tramo->id)->value('precio')
                 : null;
+            $pesos = $precioDe($subzona) ?? $precioDe($zona);
 
             $usd = $pesos !== null && $dolar > 0 ? (float) $pesos / $dolar : null;
 
             $filas[] = [
-                'zona' => $zona?->nombre,
+                'zona' => $subzona ? $zona?->nombre.' - '.$subzona->nombre : $zona?->nombre,
                 'tramo' => $tramo === null ? null : (float) $tramo->kg,
                 'usd' => $usd,
                 'valorKg' => $usd !== null && $peso > 0 ? $usd / $peso : null,
@@ -2211,6 +2325,11 @@ class Form extends Component
         $ancho = (float) ($this->bobinas['ancho'] ?: 0);
         $modulos = (float) ($this->bobinas['modulos_ancho'] ?: 0);
 
+        // El desarrollo es el paso por los modulos de desarrollo: tiene que dar una manga cargada.
+        $paso = (float) ($this->bobinas['paso'] ?: 0);
+        $modulosDesarrollo = (float) ($this->bobinas['modulos_desarrollo'] ?: 0);
+        $this->bobinas['desarrollo'] = $paso > 0 && $modulosDesarrollo > 0 ? $this->sinCerosDeMas($paso * $modulosDesarrollo) : '';
+
         if ($ancho <= 0 || $modulos <= 0) {
             $this->bobinas['ancho_refilado'] = '';
             $this->bobinas['ancho_lamina'] = '';
@@ -2224,7 +2343,7 @@ class Form extends Component
         $this->bobinas['ancho_refilado'] = $this->sinCerosDeMas($refilado);
         $this->bobinas['ancho_lamina'] = $this->sinCerosDeMas($refilado + $this->anchoLaminaExtra);
 
-        $this->recalcularPeso();
+        $this->recalcularPesoOMetros();
     }
 
     /**
@@ -2292,14 +2411,14 @@ class Form extends Component
      */
     public function ayudaDesarrollo(): ?string
     {
-        if (! $this->esDpk || ($this->bobinas['desarrollo'] ?? '') === '' || Parametro::valor(Parametro::DPK_MANGA_EXACTA) <= 0) {
+        if (($this->bobinas['desarrollo'] ?? '') === '' || Parametro::valor(Parametro::DPK_MANGA_EXACTA) <= 0) {
             return null;
         }
 
         $desarrollo = (float) $this->bobinas['desarrollo'];
         $existe = Ajuste::opciones('mangas')->contains(fn (float $manga) => abs($manga - $desarrollo) < 0.001);
 
-        return $existe ? null : 'No hay una manga de '.$this->sinCerosDeMas($desarrollo).' cm en Ajustes: revisá los módulos de desarrollo o cargá la manga.';
+        return $existe ? null : 'Manga no disponible ('.$this->sinCerosDeMas($desarrollo).' cm): cargala en Ajustes o revisá el paso y los módulos.';
     }
 
     private function sinCerosDeMas(float $valor): string
@@ -2366,6 +2485,7 @@ class Form extends Component
         $indice = (int) strtok($clave, '.');
 
         $this->entregas[$indice]['direccion_id'] = '';
+        $this->entregas[$indice]['flete_subzona_id'] = '';
     }
 
     /**
@@ -2417,7 +2537,7 @@ class Form extends Component
             return '';
         }
 
-        return (string) $this->coloresPorArranque();
+        return (string) $this->coloresCalculado();
     }
 
     /**
@@ -2425,6 +2545,10 @@ class Form extends Component
      */
     public function ayudaColores(): ?string
     {
+        if (trim((string) ($this->bobinas['colores_total'] ?? '')) !== '') {
+            return 'Total puesto a mano; la cuenta daba '.$this->coloresTotal.'. Borralo para volver al automático.';
+        }
+
         $etiquetas = ['disenos' => 'Diseños', 'variedades' => 'Variedades', 'cambios' => 'Cambios', 'colores' => 'Colores'];
 
         $faltan = collect($etiquetas)
@@ -2481,7 +2605,7 @@ class Form extends Component
             }
         }
 
-        $this->recalcularPeso();
+        $this->recalcularPesoOMetros();
         $this->recalcularScrap();
     }
 
@@ -2532,6 +2656,8 @@ class Form extends Component
             'bonifica_polimeros' => '',
             'cantidad' => '',
             'peso' => '',
+            // '1' cuando el peso lo escribio el usuario y los metros salen de el.
+            'peso_manda' => '',
             'peso_neto' => '',
             'por_bobina' => '',
             'buje' => '',
@@ -2543,6 +2669,8 @@ class Form extends Component
             'laminacion' => '',
             'forma_entrega' => self::ENVIO,
             'disenos' => '',
+            // Vacio: el total de colores sale de la cuenta. Con algo escrito, manda ese numero.
+            'colores_total' => '',
             'variedades' => '',
             'cambios' => '',
             'colores' => '',
@@ -2583,6 +2711,8 @@ class Form extends Component
     {
         return [
             'flete_zona_id' => '',
+            // Vacia: se cotiza con el precio de la zona.
+            'flete_subzona_id' => '',
             'direccion_id' => '',
             'cantidad' => '',
             'flete_tramo_id' => '',
@@ -2661,7 +2791,8 @@ class Form extends Component
 
         $entregas = [];
         foreach ($this->entregas as $entrega) {
-            $zona = $entrega['flete_zona_id'] ? FleteZona::find($entrega['flete_zona_id'])?->nombre : null;
+            $lugar = $entrega['flete_subzona_id'] ?: $entrega['flete_zona_id'];
+            $zona = $lugar ? FleteZona::find($lugar)?->nombreCompleto() : null;
             $direccion = $entrega['direccion_id'] ? ContactoDireccion::find($entrega['direccion_id'])?->direccion : null;
             $cantidad = (float) ($entrega['cantidad'] ?: 0);
 

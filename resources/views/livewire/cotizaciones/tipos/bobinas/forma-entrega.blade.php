@@ -35,6 +35,7 @@
             // La direccion depende de la zona: a Quilmes no le corresponde una de Caba.
             $zona = $entrega['flete_zona_id'] ?? '';
             $deLaZona = $this->direccionesDeZona($zona);
+            $subzonas = $this->subzonasDeZona($zona);
         @endphp
 
         <div wire:key="entrega-{{ $indice }}" class="{{ $indice > 0 ? 'mt-5' : '' }}">
@@ -72,6 +73,18 @@
                     :deshabilitado="$sinFlete"
                     :ayuda="$ayudaFlete"
                 />
+
+                {{-- Solo si la zona tiene subzonas cargadas: Quilmes con Bernal, Don Bosco... --}}
+                @if ($subzonas->isNotEmpty())
+                    <x-campo.select
+                        label="Subzona"
+                        :modelo="'entregas.'.$indice.'.flete_subzona_id'"
+                        :opciones="$subzonas"
+                        live
+                        :deshabilitado="$sinFlete"
+                        ayuda="Sin elegir, se cotiza con el precio de la zona"
+                    />
+                @endif
 
                 {{-- Direccion + alta al vuelo: queda agendada en el cliente, como desde su ficha. --}}
                 <div class="flex flex-col gap-1.5">

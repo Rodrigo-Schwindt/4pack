@@ -146,6 +146,11 @@
                 :ayuda="$falta ? 'Elegí primero '.$falta : null"
             />
 
+            @if ($conFormulario && ! $falta)
+                {{-- El producto es propio del cliente y va pegado al tipo de producto. --}}
+                @include('livewire.cotizaciones.tipos.bobinas.producto')
+            @endif
+
             @if ($tipo_producto === 'bobinas' && ! $falta)
                 {{-- Cuantas laminas lleva el producto: define cuantos materiales se cargan. --}}
                 <x-campo.select label="Laminado" modelo="bobinas.laminado" :opciones="Form::LAMINADOS" vacio="" live requerido />

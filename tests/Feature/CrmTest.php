@@ -677,7 +677,10 @@ test('el total de colores se ve en la pantalla', function () {
         ->set('bobinas.variedades', '5')
         ->set('bobinas.cambios', '10')
         ->set('bobinas.colores', '10')
-        ->assertSeeHtml('>150</output>');
+        // El total va de sugerencia en el campo, que se puede pisar a mano.
+        ->assertSeeHtml('placeholder="150"')
+        ->set('bobinas.colores_total', '200')
+        ->assertSee('Total puesto a mano; la cuenta daba 150');
 });
 
 test('sin cantidad (mts) los campos de entrega quedan bloqueados', function () {
@@ -878,10 +881,9 @@ test('sin impresión los datos técnicos quedan bloqueados', function () {
 
     // Los campos se ven, pero no se pueden completar.
     $formulario->assertSee('Poné')
-        ->assertSee('Ancho refilado (cm)')
-        ->assertSee('Mangas disponibles (cm)');
+        ->assertSee('Ancho refilado (cm)');
 
-    foreach (['bobinas.impresion_scrap', 'bobinas.laminacion_scrap', 'bobinas.bilaminacion_scrap', 'bobinas.mangas'] as $campo) {
+    foreach (['bobinas.impresion_scrap', 'bobinas.laminacion_scrap', 'bobinas.bilaminacion_scrap'] as $campo) {
         expect(campoBloqueado($formulario->html(), $campo))->toBeTrue();
     }
 
@@ -967,13 +969,13 @@ test('los campos que habilitan a otros van resaltados con asterisco', function (
         ->set('tipo_producto', 'bobinas')
         ->html();
 
-    // Cliente, Vendedor, Tipo de producto, Material, Cantidad (mts), Impresión y Flete.
-    foreach (['Cliente', 'Vendedor', 'Tipo de producto', 'Material', 'Cantidad (mts)', 'Impresión', 'Flete'] as $titulo) {
+    // Cliente, Vendedor, Tipo de producto, Material, Peso (kg), Impresión y Flete.
+    foreach (['Cliente', 'Vendedor', 'Tipo de producto', 'Material', 'Peso (kg)', 'Impresión', 'Flete'] as $titulo) {
         expect($html)->toMatch('/font-semibold text-\[#22577C\][^>]*>\s*'.preg_quote(e($titulo), '/').' \*/');
     }
 
     // Los que no bloquean nada quedan como estaban.
-    foreach (['Proveedor', 'Reprint', 'Dirección'] as $titulo) {
+    foreach (['Proveedor', 'Reprint', 'Dirección', 'Cantidad (mts)'] as $titulo) {
         expect($html)->not->toMatch('/font-semibold text-\[#22577C\][^>]*>\s*'.preg_quote(e($titulo), '/').' \*/');
     }
 });

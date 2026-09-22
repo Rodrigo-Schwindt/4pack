@@ -168,7 +168,10 @@
                     @if ($editando === 0)
                         <tr class="border-b border-slate-100 bg-slate-50/60">
                             <td class="px-4 py-3">
-                                <input autofocus wire:model="nombre" placeholder="Nombre de la zona" aria-label="Nombre de la zona" class="{{ $campo }}" />
+                                @if ($zonaPadre)
+                                    <p class="mb-1 text-xs text-slate-500">Subzona de {{ \App\Models\FleteZona::find($zonaPadre)?->nombre }}</p>
+                                @endif
+                                <input autofocus wire:model="nombre" placeholder="{{ $zonaPadre ? 'Nombre de la subzona' : 'Nombre de la zona' }}" aria-label="Nombre de la zona" class="{{ $campo }}" />
                                 @error('nombre') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
                             </td>
                             @foreach ($tramos as $tramo)
@@ -233,13 +236,22 @@
 
                                 <td class="px-4 py-4">
                                     <div class="flex items-center justify-end gap-3">
+                                        <button
+                                            type="button"
+                                            wire:click="nuevaSubzona({{ $zona->id }})"
+                                            title="Agregar subzona a {{ $zona->nombre }}"
+                                            aria-label="Agregar subzona a {{ $zona->nombre }}"
+                                            class="text-slate-400 hover:text-[#1c5480]"
+                                        >
+                                            <x-icon name="plus" class="h-4 w-4" />
+                                        </button>
                                         <button type="button" wire:click="editar({{ $zona->id }})" aria-label="Editar {{ $zona->nombre }}" class="text-slate-400 hover:text-[#1c5480]">
                                             <x-icon name="square-pen" class="h-4 w-4" />
                                         </button>
                                         <button
                                             type="button"
                                             wire:click="eliminar({{ $zona->id }})"
-                                            wire:confirm="¿Eliminar la zona {{ $zona->nombre }}?"
+                                            wire:confirm="¿Eliminar la zona {{ $zona->nombre }}{{ $zona->subzonas->isNotEmpty() ? ' y sus '.$zona->subzonas->count().' subzonas' : '' }}?"
                                             aria-label="Eliminar {{ $zona->nombre }}"
                                             class="text-red-400 hover:text-red-600"
                                         >
@@ -249,6 +261,74 @@
                                 </td>
                             </tr>
                         @endif
+
+                        {{-- Las subzonas de esa zona: su propio precio, o el de la zona si lo dejan vacio. --}}
+                        @foreach ($zona->subzonas as $subzona)
+                            @php $filaSub = $subzona->preciosPorTramo(); @endphp
+
+                            @if ($editando === $subzona->id)
+                                <tr wire:key="editar-{{ $subzona->id }}" class="border-b border-slate-100 bg-slate-50/60">
+                                    <td class="px-4 py-3">
+                                        <p class="mb-1 text-xs text-slate-500">Subzona de {{ $zona->nombre }}</p>
+                                        <input autofocus wire:model="nombre" placeholder="Nombre de la subzona" aria-label="Nombre de la subzona" class="{{ $campo }}" />
+                                        @error('nombre') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                                    </td>
+                                    @foreach ($tramos as $tramo)
+                                        <td class="px-4 py-3">
+                                            <input type="number" step="0.01" min="0" wire:model="precios.{{ $tramo->id }}" placeholder="0,00" aria-label="Precio {{ $tramo->etiqueta }}" class="{{ $campo }} text-right" />
+                                            @error('precios.'.$tramo->id) <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                                        </td>
+                                    @endforeach
+                                    <td class="px-4 py-3">
+                                        <div class="flex items-center justify-end gap-3">
+                                            <button type="button" wire:click="guardar" aria-label="Guardar {{ $subzona->nombre }}" class="text-[#1c5480] hover:text-[#174567]">
+                                                <x-icon name="check" class="h-4 w-4" />
+                                            </button>
+                                            <button type="button" wire:click="cancelar" aria-label="Cancelar" class="text-slate-400 hover:text-slate-600">
+                                                <x-icon name="x" class="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @else
+                                <tr wire:key="subzona-{{ $subzona->id }}" class="border-b border-slate-100 last:border-0">
+                                    <td class="py-3 pr-4 pl-10 text-sm text-slate-500">
+                                        <span class="text-slate-300">&#9492;</span> {{ $subzona->nombre }}
+                                    </td>
+
+                                    @foreach ($tramos as $tramo)
+                                        <td class="px-4 py-3 text-right">
+                                            @if (isset($filaSub[$tramo->id]))
+                                                <p class="text-sm text-slate-700">{{ $pesos($filaSub[$tramo->id]) }}</p>
+                                                <p class="text-xs text-slate-400">{{ $dolares($filaSub[$tramo->id]) }}</p>
+                                            @elseif (isset($fila[$tramo->id]))
+                                                <p class="text-sm text-slate-300">{{ $pesos($fila[$tramo->id]) }}</p>
+                                                <p class="text-xs text-slate-300">de la zona</p>
+                                            @else
+                                                <p class="text-sm text-slate-300">-</p>
+                                            @endif
+                                        </td>
+                                    @endforeach
+
+                                    <td class="px-4 py-3">
+                                        <div class="flex items-center justify-end gap-3">
+                                            <button type="button" wire:click="editar({{ $subzona->id }})" aria-label="Editar {{ $subzona->nombre }}" class="text-slate-400 hover:text-[#1c5480]">
+                                                <x-icon name="square-pen" class="h-4 w-4" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                wire:click="eliminar({{ $subzona->id }})"
+                                                wire:confirm="¿Eliminar la subzona {{ $subzona->nombre }}?"
+                                                aria-label="Eliminar {{ $subzona->nombre }}"
+                                                class="text-red-400 hover:text-red-600"
+                                            >
+                                                <x-icon name="trash-2" class="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            @endif
+                        @endforeach
                     @endforeach
 
                     @if ($zonas->isEmpty() && $editando !== 0)

@@ -75,7 +75,5 @@
             <x-campo.texto label="U$S" modelo="bobinas.laminacion_scrap_usd" calculado :ayuda="$trabado ? null : $this->ayudaScrap('laminacion_scrap')" />
             <x-campo.texto label="U$S" modelo="bobinas.bilaminacion_scrap_usd" calculado :ayuda="$trabado ? null : $this->ayudaScrap('bilaminacion_scrap')" />
         </div>
-
-        <x-campo.ajuste label="Mangas disponibles (cm)" grupo="mangas" modelo="bobinas.mangas" :opciones="$mangas" :creando="$creando" :campo-alta="$campoAlta" :deshabilitado="$trabado" />
     </div>
 </div>

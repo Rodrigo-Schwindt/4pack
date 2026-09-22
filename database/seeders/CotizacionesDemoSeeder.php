@@ -24,7 +24,8 @@ class CotizacionesDemoSeeder extends Seeder
 {
     /**
      * Cada una: cliente, vendedor, materiales [nombre, mic], y el resto de los
-     * datos. El estado y la antiguedad arman el dashboard: dos aprobadas hoy,
+     * datos. El desarrollo sale de paso x modulos y tiene que caer en una manga
+     * cargada. El estado y la antiguedad arman el dashboard: dos aprobadas hoy,
      * tres pendientes (dos viejas, para las alertas) y una finalizada.
      */
     private const COTIZACIONES = [
@@ -32,7 +33,7 @@ class CotizacionesDemoSeeder extends Seeder
             'cliente' => 'Bagley', 'categoria' => 'A', 'referencia' => 'PED-2026-118',
             'producto' => 'Flowpack bilaminado impreso Carrefour Caseras x 700g',
             'laminado' => 2, 'materiales' => [['Bopp Cristal', 20], ['Polietileno Blanco', 45]],
-            'ancho' => 44, 'modulos_ancho' => 2, 'paso' => 58, 'desarrollo' => 50, 'buje' => 3,
+            'ancho' => 44, 'modulos_ancho' => 2, 'paso' => 58, 'modulos_desarrollo' => 1, 'buje' => 3,
             'cantidad' => 67000, 'impresion' => 'Si', 'colores' => 8, 'disenos' => 1, 'cambios' => 0,
             'porcentaje_impreso' => 100, 'blanco' => 100, 'laminacion' => 'Simple', 'solvente' => 'No',
             'impresion_scrap' => 3, 'laminacion_scrap' => 2,
@@ -43,7 +44,7 @@ class CotizacionesDemoSeeder extends Seeder
             'cliente' => 'Arcor', 'categoria' => 'A', 'referencia' => 'OC 4471',
             'producto' => 'Bobina PE cristal para envasado automático',
             'laminado' => 1, 'materiales' => [['Polietileno Cristal', 60]],
-            'ancho' => 35, 'modulos_ancho' => 2, 'paso' => 45, 'desarrollo' => 40, 'buje' => 3,
+            'ancho' => 35, 'modulos_ancho' => 2, 'paso' => 45, 'modulos_desarrollo' => 1, 'buje' => 3,
             'cantidad' => 20000, 'impresion' => 'No', 'colores' => 0, 'disenos' => 0, 'cambios' => 0,
             'porcentaje_impreso' => 0, 'blanco' => 0, 'laminacion' => '', 'solvente' => 'No',
             'impresion_scrap' => 0, 'laminacion_scrap' => 0,
@@ -54,7 +55,7 @@ class CotizacionesDemoSeeder extends Seeder
             'cliente' => 'Molinos Río de la Plata', 'categoria' => 'B', 'referencia' => 'Muestra harina 1kg',
             'producto' => 'Bobina trilaminada PET / Foil / PE',
             'laminado' => 3, 'materiales' => [['Poliester Cristal', 12], ['Foil Aluminio', 9], ['Polietileno Cristal', 50]],
-            'ancho' => 30, 'modulos_ancho' => 3, 'paso' => 40, 'desarrollo' => 60, 'buje' => 6,
+            'ancho' => 30, 'modulos_ancho' => 3, 'paso' => 40, 'modulos_desarrollo' => 1, 'buje' => 6,
             'cantidad' => 35000, 'impresion' => 'Si', 'colores' => 6, 'disenos' => 2, 'cambios' => 1,
             'porcentaje_impreso' => 80, 'blanco' => 50, 'laminacion' => 'Bi.', 'solvente' => 'Si',
             'impresion_scrap' => 3, 'laminacion_scrap' => 2, 'bilaminacion_scrap' => 2,
@@ -65,7 +66,7 @@ class CotizacionesDemoSeeder extends Seeder
             'cliente' => 'La Serenísima', 'categoria' => 'A', 'referencia' => 'Renovación stock',
             'producto' => 'Bobina Bopp mate + PE para snacks',
             'laminado' => 2, 'materiales' => [['Bopp Mate', 20], ['Polietileno Cristal', 40]],
-            'ancho' => 52, 'modulos_ancho' => 2, 'paso' => 60, 'desarrollo' => 52, 'buje' => 3,
+            'ancho' => 52, 'modulos_ancho' => 2, 'paso' => 60, 'modulos_desarrollo' => 1, 'buje' => 3,
             'cantidad' => 120000, 'impresion' => 'Si', 'colores' => 8, 'disenos' => 3, 'cambios' => 2,
             'porcentaje_impreso' => 100, 'blanco' => 100, 'laminacion' => 'Simple', 'solvente' => 'No',
             'impresion_scrap' => 3, 'laminacion_scrap' => 2,
@@ -76,7 +77,7 @@ class CotizacionesDemoSeeder extends Seeder
             'cliente' => 'Bagley', 'categoria' => 'A', 'referencia' => 'PED-2026-131',
             'producto' => 'Bobina Bopp metalizado + Bopp cristal',
             'laminado' => 2, 'materiales' => [['Bopp Cristal', 20], ['Bopp Metalizado', 18]],
-            'ancho' => 40, 'modulos_ancho' => 2, 'paso' => 50, 'desarrollo' => 48, 'buje' => 3,
+            'ancho' => 40, 'modulos_ancho' => 2, 'paso' => 50, 'modulos_desarrollo' => 1, 'buje' => 3,
             'cantidad' => 45000, 'impresion' => 'Si', 'colores' => 4, 'disenos' => 1, 'cambios' => 0,
             'porcentaje_impreso' => 60, 'blanco' => 0, 'laminacion' => 'Simple', 'solvente' => 'No',
             'impresion_scrap' => 3, 'laminacion_scrap' => 2,
@@ -87,7 +88,7 @@ class CotizacionesDemoSeeder extends Seeder
             'cliente' => 'Arcor', 'categoria' => 'A', 'referencia' => 'OC 4390',
             'producto' => 'Bobina PE blanco impresa 2 colores',
             'laminado' => 1, 'materiales' => [['Polietileno Blanco', 70]],
-            'ancho' => 38, 'modulos_ancho' => 2, 'paso' => 40, 'desarrollo' => 45, 'buje' => 3,
+            'ancho' => 38, 'modulos_ancho' => 2, 'paso' => 40, 'modulos_desarrollo' => 1, 'buje' => 3,
             'cantidad' => 15000, 'impresion' => 'Si', 'colores' => 2, 'disenos' => 1, 'cambios' => 0,
             'porcentaje_impreso' => 30, 'blanco' => 0, 'laminacion' => '', 'solvente' => 'No',
             'impresion_scrap' => 3, 'laminacion_scrap' => 0,
@@ -142,7 +143,7 @@ class CotizacionesDemoSeeder extends Seeder
         $this->set($form, 'ancho', $d['ancho']);
         $this->set($form, 'modulos_ancho', $d['modulos_ancho']);
 
-        foreach (['paso', 'desarrollo', 'buje', 'impresion', 'colores', 'disenos', 'cambios', 'porcentaje_impreso', 'blanco', 'laminacion', 'solvente', 'impresion_scrap', 'laminacion_scrap'] as $campo) {
+        foreach (['paso', 'modulos_desarrollo', 'buje', 'impresion', 'colores', 'disenos', 'cambios', 'porcentaje_impreso', 'blanco', 'laminacion', 'solvente', 'impresion_scrap', 'laminacion_scrap'] as $campo) {
             $this->set($form, $campo, $d[$campo]);
         }
 

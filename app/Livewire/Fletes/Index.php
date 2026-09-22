@@ -29,6 +29,9 @@ class Index extends Component
     /** Zona en edicion; 0 mientras se carga una nueva. */
     public ?int $editando = null;
 
+    /** Zona de la que cuelga la subzona que se esta cargando. */
+    public ?int $zonaPadre = null;
+
     public string $nombre = '';
 
     /** @var array<int, string> precio por id de tramo */
@@ -82,9 +85,20 @@ class Index extends Component
 
     public function nueva(): void
     {
+        $this->reset('nombre', 'precios', 'zonaPadre');
+        $this->resetValidation();
+        $this->editando = 0;
+    }
+
+    /**
+     * Subzona de una zona: misma tabla de precios, colgada de la principal.
+     */
+    public function nuevaSubzona(int $padreId): void
+    {
         $this->reset('nombre', 'precios');
         $this->resetValidation();
         $this->editando = 0;
+        $this->zonaPadre = FleteZona::principales()->whereKey($padreId)->value('id');
     }
 
     public function editar(int $id): void
@@ -93,13 +107,14 @@ class Index extends Component
 
         $this->resetValidation();
         $this->editando = $zona->id;
+        $this->zonaPadre = $zona->zona_padre_id;
         $this->nombre = $zona->nombre;
         $this->precios = array_map($this->comoTexto(...), $zona->preciosPorTramo());
     }
 
     public function cancelar(): void
     {
-        $this->reset('editando', 'nombre', 'precios');
+        $this->reset('editando', 'nombre', 'precios', 'zonaPadre');
         $this->resetValidation();
     }
 
@@ -107,7 +122,8 @@ class Index extends Component
     {
         // Si la zona ya existe (por ejemplo, creada desde un cliente) no es un
         // error: se le cargan los precios a esa en vez de pedir otro nombre.
-        if (! $this->editando) {
+        // Con una subzona nueva no aplica: se crea colgada de su zona.
+        if (! $this->editando && $this->zonaPadre === null) {
             $this->editando = FleteZona::where('nombre', trim($this->nombre))->value('id') ?? 0;
         }
 
@@ -121,8 +137,8 @@ class Index extends Component
         ]);
 
         $zona = $this->editando
-            ? tap(FleteZona::findOrFail($this->editando))->update(['nombre' => $datos['nombre']])
-            : FleteZona::create(['nombre' => $datos['nombre']]);
+            ? tap(FleteZona::findOrFail($this->editando))->update(['nombre' => $datos['nombre'], 'zona_padre_id' => $this->zonaPadre])
+            : FleteZona::create(['nombre' => $datos['nombre'], 'zona_padre_id' => $this->zonaPadre]);
 
         foreach (FleteTramo::pluck('id') as $tramoId) {
             $precio = $datos['precios'][$tramoId] ?? null;
@@ -139,11 +155,13 @@ class Index extends Component
             );
         }
 
-        session()->flash('status', $this->editando ? 'Zona actualizada.' : 'Zona creada.');
+        $que = $this->zonaPadre === null ? 'Zona' : 'Subzona';
+        session()->flash('status', $this->editando ? $que.' actualizada.' : $que.' creada.');
 
         $this->cancelar();
     }
 
+    /** Se lleva puestas sus subzonas con sus precios. */
     public function eliminar(int $id): void
     {
         FleteZona::findOrFail($id)->delete();
@@ -198,8 +216,13 @@ class Index extends Component
     public function render()
     {
         // Como en la maqueta: de la zona mas barata a la mas cara, y alfabetico si empatan.
-        $zonas = FleteZona::with('precios')
-            ->when($this->buscar !== '', fn ($query) => $query->where('nombre', 'like', '%'.trim($this->buscar).'%'))
+        // Las subzonas van debajo de la suya, no como filas sueltas.
+        $buscado = trim($this->buscar);
+        $zonas = FleteZona::with(['precios', 'subzonas.precios'])
+            ->principales()
+            ->when($buscado !== '', fn ($query) => $query->where(fn ($q) => $q
+                ->where('nombre', 'like', '%'.$buscado.'%')
+                ->orWhereHas('subzonas', fn ($sub) => $sub->where('nombre', 'like', '%'.$buscado.'%'))))
             ->orderByRaw('(select coalesce(min(precio), 1e12) from flete_precios where flete_zona_id = flete_zonas.id) asc')
             ->orderBy('nombre')
             ->get();
@@ -207,7 +230,7 @@ class Index extends Component
         return view('livewire.fletes.index', [
             'tramos' => FleteTramo::orderBy('kg')->orderBy('pallets')->get(),
             // Zonas dadas de alta desde otra pantalla que todavia no tienen precios.
-            'pendientes' => FleteZona::doesntHave('precios')->orderBy('nombre')->get(['id', 'nombre']),
+            'pendientes' => FleteZona::principales()->doesntHave('precios')->orderBy('nombre')->get(['id', 'nombre']),
             'zonas' => $zonas,
             'cotizacion' => is_numeric($this->dolar) ? (float) $this->dolar : 0.0,
             'dolarUltima' => DolarOficial::ultima(),

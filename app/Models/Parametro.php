@@ -100,6 +100,7 @@ class Parametro extends Model
     public const VARIABLES = [
         'Medidas' => [
             self::ANCHO_LAMINA_EXTRA => ['Ancho lámina: cm que se suman al ancho refilado', 2],
+            self::DPK_MANGA_EXACTA => ['El desarrollo tiene que coincidir con una manga cargada (1 = sí, 0 = no)', 1],
         ],
         'Materiales' => [
             self::MATERIAL_FACTOR => ['Factor que multiplica el valor de cada material (columna A de la planilla)', 1],
@@ -150,7 +151,6 @@ class Parametro extends Model
             self::DPK_SCRAP_ZIPPER => ['Zipper: unidades de scrap por cada millar', 100],
             self::DPK_SCRAP_TROQUEL => ['Troquel: unidades de scrap por cada millar', 100],
             self::DPK_SCRAP_PICO => ['Pico: unidades de scrap por cada millar', 100],
-            self::DPK_MANGA_EXACTA => ['El desarrollo tiene que coincidir con una manga cargada (1 = sí, 0 = no)', 1],
         ],
         'Limpieza de diluyentes (litros según metros)' => [
             'limpieza_lts_base' => ['Hasta 30.000 m', 12],
