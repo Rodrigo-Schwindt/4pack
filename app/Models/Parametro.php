@@ -99,7 +99,7 @@ class Parametro extends Model
      */
     public const VARIABLES = [
         'Medidas' => [
-            self::ANCHO_LAMINA_EXTRA => ['Ancho lámina: cm que se suman al ancho refilado', 2],
+            self::ANCHO_LAMINA_EXTRA => ['Demasía de cada material por defecto: cm que se suman al ancho refilado', 2],
             self::DPK_MANGA_EXACTA => ['El desarrollo tiene que coincidir con una manga cargada (1 = sí, 0 = no)', 1],
         ],
         'Materiales' => [
@@ -144,7 +144,7 @@ class Parametro extends Model
             self::OBJETIVO_TONELADAS_DIA => ['Objetivo diario de toneladas aprobadas (dashboard)', 2],
         ],
         'Confección DPK' => [
-            self::DPK_ANCHO_LAMINA_EXTRA => ['Ancho lámina: cm que se suman al ancho refilado (DPK)', 3],
+            self::DPK_ANCHO_LAMINA_EXTRA => ['Demasía de cada material por defecto: cm que se suman al ancho refilado (DPK)', 3],
             self::DPK_SL_COMPUESTO => ['Solvent less: proporción de compuesto (DPK)', 0.63],
             self::DPK_SL_CATALIZADOR => ['Solvent less: proporción de catalizador (DPK)', 0],
             self::DPK_SOLVENTE_FACTOR => ['Con solvente: factor del adhesivo (DPK)', 4],

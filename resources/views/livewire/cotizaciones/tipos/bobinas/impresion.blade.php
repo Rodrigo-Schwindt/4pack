@@ -44,11 +44,27 @@
         <x-campo.texto label="Bonificación polímeros %" modelo="bobinas.bonifica_polimeros" tipo="number" paso="0.01" modificador="live.blur" placeholder="0" />
     </div>
 
+    @php
+        // Bobinas: cada pegado entre laminas decide su solvente. Mono no tiene pegados;
+        // bi tiene uno (Si / No); tri tiene dos, y Mixto es uno con y otro sin.
+        // El DPK no elige laminado: sigue como siempre.
+        $laminas = $this->esDpk ? 2 : (int) ($bobinas['laminado'] ?? 0);
+        $filaSolvente = $laminas >= 2 || $this->esDpk;
+        $opcionesSolvente = $laminas === 3 ? [...$opciones['si_no'], \App\Livewire\Cotizaciones\Form::SOLVENTE_MIXTO] : $opciones['si_no'];
+    @endphp
+
+    @if ($filaSolvente)
     <div class="grid gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-4">
-        <x-campo.select label="Contiene Líquido" modelo="bobinas.contiene_liquido" :opciones="$opciones['si_no']" />
-        <x-campo.select label="Solvente" modelo="bobinas.solvente" :opciones="$opciones['si_no']" />
-        <x-campo.select label="Laminación" modelo="bobinas.laminacion" :opciones="$opciones['laminaciones']" />
+        @if ($laminas >= 2)
+            <x-campo.select label="Contiene Líquido" modelo="bobinas.contiene_liquido" :opciones="$opciones['si_no']" wire:key="liquido-{{ $laminas }}" />
+            <x-campo.select label="Solvente" modelo="bobinas.solvente" :opciones="$opcionesSolvente" wire:key="solvente-{{ $laminas }}" />
+        @endif
+        {{-- En bobinas los pegados salen del Laminado y el Solvente; el DPK sigue eligiendo las pasadas. --}}
+        @if ($this->esDpk)
+            <x-campo.select label="Laminación" modelo="bobinas.laminacion" :opciones="$opciones['laminaciones']" />
+        @endif
     </div>
+    @endif
 
     <div class="grid gap-x-6 gap-y-5 md:grid-cols-2 xl:grid-cols-4">
         {{-- D8 de la planilla: si no se refila, el bloque Refilado del tab de Costos queda en cero. --}}

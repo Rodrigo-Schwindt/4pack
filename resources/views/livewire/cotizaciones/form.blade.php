@@ -48,14 +48,30 @@
         </nav>
 
         <div class="flex items-center gap-3">
-            <button
-                type="button"
-                disabled
-                title="Próximamente"
-                class="flex h-10 cursor-default items-center rounded-md bg-[#1c5480] px-5 text-sm font-medium text-white"
-            >
-                {{ $this->accionPrincipal }}
-            </button>
+            @if ($this->accionPrincipal === 'Enviar pedido')
+                {{-- Guarda la OC y pasa la cotizacion a Finalizada. --}}
+                @php $enviado = $guardada?->estado === \App\Models\Cotizacion::FINALIZADA; @endphp
+                <button
+                    type="button"
+                    wire:click="enviarPedido"
+                    wire:loading.attr="disabled"
+                    @disabled($enviado)
+                    title="{{ $enviado ? 'La cotización ya está finalizada' : 'Guarda la OC y pasa la cotización a Finalizada' }}"
+                    class="flex h-10 items-center gap-2 rounded-md bg-[#1c5480] px-5 text-sm font-medium text-white hover:bg-[#174567] disabled:cursor-default disabled:opacity-60"
+                >
+                    <x-icon name="loader-circle" class="h-4 w-4 animate-spin" wire:loading wire:target="enviarPedido" />
+                    {{ $enviado ? 'Pedido enviado' : 'Enviar pedido' }}
+                </button>
+            @else
+                <button
+                    type="button"
+                    disabled
+                    title="Próximamente"
+                    class="flex h-10 cursor-default items-center rounded-md bg-[#1c5480] px-5 text-sm font-medium text-white"
+                >
+                    {{ $this->accionPrincipal }}
+                </button>
+            @endif
             <button
                 type="button"
                 wire:click="guardar"
@@ -76,17 +92,44 @@
         <p class="mb-4 text-sm text-red-600">Para guardar hace falta el cliente, el vendedor y la fecha.</p>
     @endif
 
+    @error('oc.numero')
+        <p class="mb-4 text-sm text-red-600">Para enviar el pedido falta el N° OC (solapa Orden de Compra).</p>
+    @enderror
+
     @php
         // Bobinas y DPK comparten casi todo: el DPK solo tiene vistas propias donde cambia.
         $conFormulario = in_array($tipo_producto, ['bobinas', 'confeccion-dpk'], true);
         $carpeta = $tipo_producto === 'confeccion-dpk' ? 'confeccion-dpk' : 'bobinas';
     @endphp
 
+    @php
+        // Los productos que se sumaron con Duplicar / Nuevo producto.
+        $hayExtras = $productosExtra !== [];
+        $tituloProducto = 'mb-3 text-[16px] leading-[normal] font-medium text-black';
+        // "Producto 1 · Opción 2": uno por formulario, en orden.
+        $lista = $this->listaProductos;
+    @endphp
+
     @if ($solapa !== 'datos')
         @if ($solapa === 'costos' && $conFormulario)
+            @if ($hayExtras)
+                <h2 class="{{ $tituloProducto }}">{{ $lista[0]['etiqueta'] }} · {{ Form::TIPOS_PRODUCTO[$tipo_producto] }}</h2>
+            @endif
             @include('livewire.cotizaciones.tipos.'.$carpeta.'.costos')
+
+            @foreach ($productosExtra as $indice => $extra)
+                <div wire:key="costos-extra-{{ $extra['uid'] }}" class="mt-8">
+                    <h2 class="{{ $tituloProducto }}">{{ $lista[$indice + 1]['etiqueta'] }} · {{ Form::TIPOS_PRODUCTO[$extra['tipo_producto']] ?? 'Sin tipo de producto' }}</h2>
+                    @livewire('cotizaciones.form', ['producto' => $extra, 'generales' => $this->generales, 'solapaProducto' => 'costos', 'numeroProducto' => $indice + 2, 'etiquetaProducto' => $lista[$indice + 1]['etiqueta']], key('producto-'.$extra['uid'].'-costos-'.$this->claveGenerales.'-'.$lista[$indice + 1]['etiqueta']))
+                </div>
+            @endforeach
+
+            @if ($hayExtras)
+                @include('livewire.cotizaciones.tipos._resumen')
+            @endif
         @elseif ($solapa === 'cotizacion' && $conFormulario)
             @include('livewire.cotizaciones.tipos.bobinas.cotizacion')
+            @include('livewire.cotizaciones.tipos.bobinas.condiciones-venta')
         @elseif ($solapa === 'orden-de-compra' && $conFormulario)
             @include('livewire.cotizaciones.tipos.bobinas.orden-compra')
         @elseif ($solapa === 'entrega' && $conFormulario)
@@ -131,85 +174,42 @@
             <x-campo.texto label="N° Ref. Pedido Cotización" modelo="referencia" placeholder="-" />
         </div>
 
-        <h2 class="{{ $tituloSeccion }}">Datos de producto</h2>
-        <hr class="border-slate-100" />
-
-        <div class="grid gap-x-6 gap-y-5 px-6 py-6 md:grid-cols-2 xl:grid-cols-4">
-            <x-campo.select
-                label="Tipo de producto"
-                modelo="tipo_producto"
-                :opciones="Form::TIPOS_PRODUCTO"
-                vacio=""
-                live
-                requerido
-                :deshabilitado="(bool) $falta"
-                :ayuda="$falta ? 'Elegí primero '.$falta : null"
-            />
-
-            @if ($conFormulario && ! $falta)
-                {{-- El producto es propio del cliente y va pegado al tipo de producto. --}}
-                @include('livewire.cotizaciones.tipos.bobinas.producto')
-            @endif
-
-            @if ($tipo_producto === 'bobinas' && ! $falta)
-                {{-- Cuantas laminas lleva el producto: define cuantos materiales se cargan. --}}
-                <x-campo.select label="Laminado" modelo="bobinas.laminado" :opciones="Form::LAMINADOS" vacio="" live requerido />
-
-                @include('livewire.cotizaciones.tipos.bobinas.identificacion')
-            @elseif ($tipo_producto === 'confeccion-dpk' && ! $falta)
-                @include('livewire.cotizaciones.tipos.confeccion-dpk.identificacion')
-            @endif
-        </div>
-
-        @if ($conFormulario && ! $falta)
-            @if ($tipo_producto === 'confeccion-dpk')
-                <hr class="border-slate-100" />
-                @include('livewire.cotizaciones.tipos.confeccion-dpk.accesorios')
-            @endif
-
-            <hr class="border-slate-100" />
-            @include('livewire.cotizaciones.tipos.bobinas.materiales')
-
-            <hr class="border-slate-100" />
-            @include('livewire.cotizaciones.tipos.bobinas.impresion')
-
-            <h2 class="{{ $tituloSeccion }}">Forma de entrega</h2>
-            <hr class="border-slate-100" />
-            @include('livewire.cotizaciones.tipos.bobinas.forma-entrega')
-
-            <h2 class="{{ $tituloSeccion }}">Datos técnicos</h2>
-            <hr class="border-slate-100" />
-            @include('livewire.cotizaciones.tipos.'.$carpeta.'.tecnicos')
-
-            <h2 class="{{ $tituloSeccion }}">Condiciones de pago</h2>
-            <hr class="border-slate-100" />
-            @include('livewire.cotizaciones.tipos.bobinas.pagos')
-        @elseif (! $this->bloqueado)
-            <div class="px-6 pb-10">
-                <p class="text-sm text-slate-400">
-                    Campos de {{ Form::TIPOS_PRODUCTO[$tipo_producto] }}: pendientes de definir.
-                </p>
-            </div>
-        @endif
+        @include('livewire.cotizaciones.tipos._producto')
     </section>
+
+    @foreach ($productosExtra as $indice => $extra)
+        <div wire:key="datos-extra-{{ $extra['uid'] }}" class="mt-6">
+            @livewire('cotizaciones.form', ['producto' => $extra, 'generales' => $this->generales, 'solapaProducto' => 'datos', 'numeroProducto' => $indice + 2, 'etiquetaProducto' => $lista[$indice + 1]['etiqueta']], key('producto-'.$extra['uid'].'-datos-'.$this->claveGenerales.'-'.$lista[$indice + 1]['etiqueta']))
+        </div>
+    @endforeach
     @endif
 
     @if ($solapa === 'datos' && ! $this->bloqueado)
+        @php
+            // Se duplica el ultimo producto de la lista, y solo si ya tiene tipo.
+            $ultimo = $productosExtra === [] ? $tipo_producto : (end($productosExtra)['tipo_producto'] ?? '');
+        @endphp
+
         <div class="mt-4 flex items-center justify-end gap-3">
             <button
                 type="button"
-                disabled
-                title="Próximamente"
-                class="flex h-10 cursor-default items-center rounded-md bg-[#1c5480] px-5 text-sm font-medium text-white"
+                wire:click="duplicarProducto"
+                wire:loading.attr="disabled"
+                @disabled($ultimo === '')
+                title="{{ $ultimo === '' ? 'Elegí el tipo del último producto para poder duplicarlo' : 'Agrega abajo una copia del último producto' }}"
+                class="flex h-10 items-center gap-2 rounded-md bg-[#1c5480] px-5 text-sm font-medium text-white hover:bg-[#174567] disabled:cursor-default disabled:opacity-60"
             >
+                <x-icon name="loader-circle" class="h-4 w-4 animate-spin" wire:loading wire:target="duplicarProducto" />
                 Duplicar Cotización
             </button>
             <button
                 type="button"
-                disabled
-                title="Próximamente"
-                class="flex h-10 cursor-default items-center rounded-md border border-[#1c5480] bg-white px-5 text-sm font-medium text-[#1c5480]"
+                wire:click="nuevoProducto"
+                wire:loading.attr="disabled"
+                title="Agrega abajo un producto nuevo, de cualquier tipo"
+                class="flex h-10 items-center gap-2 rounded-md border border-[#1c5480] bg-white px-5 text-sm font-medium text-[#1c5480] hover:bg-slate-50 disabled:opacity-60"
             >
+                <x-icon name="loader-circle" class="h-4 w-4 animate-spin" wire:loading wire:target="nuevoProducto" />
                 Nuevo Producto
             </button>
         </div>

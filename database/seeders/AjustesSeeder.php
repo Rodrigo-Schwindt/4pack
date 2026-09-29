@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Ajuste;
+use App\Models\AjusteTexto;
 use Illuminate\Database\Seeder;
 
 /**
@@ -19,6 +20,11 @@ class AjustesSeeder extends Seeder
         'bujes' => [3, 6],
     ];
 
+    /** Listas de texto: por donde llega la OC. */
+    private const TEXTOS = [
+        AjusteTexto::CANALES_OC => ['Whats app'],
+    ];
+
     public function run(): void
     {
         foreach (self::VALORES as $grupo => $valores) {
@@ -27,6 +33,14 @@ class AjustesSeeder extends Seeder
             }
 
             $this->command?->info(sprintf('ajustes/%s: %d valores.', $grupo, Ajuste::delGrupo($grupo)->count()));
+        }
+
+        foreach (self::TEXTOS as $grupo => $textos) {
+            foreach ($textos as $texto) {
+                AjusteTexto::firstOrCreate(['grupo' => $grupo, 'texto' => $texto]);
+            }
+
+            $this->command?->info(sprintf('ajustes/%s: %d opciones.', $grupo, AjusteTexto::delGrupo($grupo)->count()));
         }
     }
 }

@@ -275,7 +275,10 @@ test('elegir bobinas despliega sus secciones', function () {
         ->set('tipo_producto', 'bobinas')
         ->assertSee('Módulos Desarrollo (cm)')
         ->assertSee('Forma de entrega')
-        ->assertSee('Datos técnicos')
+        // Lo tecnico de bobinas quedo en Datos de producto y en la fila de cada material.
+        ->assertDontSee('Datos técnicos')
+        ->assertSee('Ancho material (cm)')
+        ->assertSee('Impresión Scrap (cm)')
         ->assertSee('Condiciones de pago')
         ->assertSee('Duplicar Cotización');
 });
@@ -283,7 +286,7 @@ test('elegir bobinas despliega sus secciones', function () {
 test('la forma de entrega suma y quita filas', function () {
     cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
-        ->set('bobinas.cantidad', '67000')
+        ->set('bobinas.peso', '67000')
         ->assertCount('entregas', 2)
         ->call('agregarEntrega')
         ->assertCount('entregas', 3)
@@ -314,7 +317,7 @@ test('la solapa de cotización arma el texto y sigue las entregas cargadas', fun
     cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
         ->call('verSolapa', 'cotizacion')
-        ->assertSee('Cotización 000001/'.now()->year)
+        ->assertSee('Cotización 1')
         ->assertSee('Anchos de bobina')
         ->assertSee('Condiciones de venta')
         ->assertSee('Entrega 1')
@@ -333,7 +336,8 @@ test('la solapa de orden de compra cambia el botón principal y lista lo cotizad
         ->assertDontSee('Descargar PDF')
         ->assertSee('Adjuntar OC')
         ->assertSee('Precio unitario')
-        ->assertSee('USD 862,50');
+        ->assertSee('Importe total')
+        ->assertSee('Canal recibo de OC');
 });
 
 test('la orden de compra pide una fecha de entrega por cada entrega cargada', function () {
@@ -611,17 +615,42 @@ test('configuración administra mangas y bujes', function () {
     expect(App\Models\Ajuste::opciones('bujes')->all())->toBe([8.0]);
 });
 
-test('solvente es si/no y laminación simple, bi. o tri.', function () {
-    cotizacionIniciada()
+test('en bobinas los pegados salen del laminado y el solvente, sin select de laminación', function () {
+    $formulario = cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
+        ->set('bobinas.laminado', 2)
         ->assertSeeHtml('wire:model="bobinas.solvente"')
+        ->assertDontSeeHtml('wire:model="bobinas.laminacion"')
+        ->assertDontSeeHtml('<option value="Mixto">');
+
+    $pegados = fn () => (new ReflectionMethod($formulario->instance(), 'pasadasDeLaminacion'))->invoke($formulario->instance());
+
+    // Bilaminado: un pegado, con o sin solvente.
+    $formulario->set('bobinas.solvente', 'No');
+    expect($pegados())->toBe(['sinSolvente' => 1, 'conSolvente' => 0]);
+    $formulario->set('bobinas.solvente', 'Si');
+    expect($pegados())->toBe(['sinSolvente' => 0, 'conSolvente' => 1]);
+
+    // Trilaminado: dos pegados; Mixto es uno con y otro sin.
+    $formulario->set('bobinas.laminado', 3)->assertSeeHtml('<option value="Mixto">');
+    $formulario->set('bobinas.solvente', 'Si');
+    expect($pegados())->toBe(['sinSolvente' => 0, 'conSolvente' => 2]);
+    $formulario->set('bobinas.solvente', 'No');
+    expect($pegados())->toBe(['sinSolvente' => 2, 'conSolvente' => 0]);
+    $formulario->set('bobinas.solvente', 'Mixto');
+    expect($pegados())->toBe(['sinSolvente' => 1, 'conSolvente' => 1]);
+
+    // Monolaminado: sin pegados ni selects.
+    $formulario->set('bobinas.laminado', 1)->assertDontSeeHtml('wire:model="bobinas.solvente"');
+    expect($pegados())->toBe(['sinSolvente' => 0, 'conSolvente' => 0]);
+});
+
+test('el dpk sigue eligiendo la laminación simple, bi. o tri.', function () {
+    cotizacionIniciada()
+        ->set('tipo_producto', 'confeccion-dpk')
         ->assertSeeHtml('wire:model="bobinas.laminacion"')
-        ->assertSeeHtml('<option value="Simple">Simple</option>')
-        ->assertSeeHtml('<option value="Bi.">Bi.</option>')
         ->assertSeeHtml('<option value="Tri.">Tri.</option>')
-        ->set('bobinas.solvente', 'No')
         ->set('bobinas.laminacion', 'Bi.')
-        ->assertSet('bobinas.solvente', 'No')
         ->assertSet('bobinas.laminacion', 'Bi.');
 });
 
@@ -683,7 +712,7 @@ test('el total de colores se ve en la pantalla', function () {
         ->assertSee('Total puesto a mano; la cuenta daba 150');
 });
 
-test('sin cantidad (mts) los campos de entrega quedan bloqueados', function () {
+test('sin peso (kg) los campos de entrega quedan bloqueados', function () {
     $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas');
 
     // Los campos se ven, pero no se pueden completar.
@@ -693,7 +722,7 @@ test('sin cantidad (mts) los campos de entrega quedan bloqueados', function () {
         expect(campoBloqueado($formulario->html(), $campo))->toBeTrue();
     }
 
-    $formulario->set('bobinas.cantidad', '67000')->assertDontSee('Completá');
+    $formulario->set('bobinas.peso', '67000')->assertDontSee('Completá');
 
     expect(campoBloqueado($formulario->html(), 'entregas.0.cantidad'))->toBeFalse();
 });
@@ -701,12 +730,12 @@ test('sin cantidad (mts) los campos de entrega quedan bloqueados', function () {
 test('la forma de entrega avisa cuánto falta repartir', function () {
     cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
-        ->set('bobinas.cantidad', '67000')
-        ->assertSee('Repartido 0 de 67.000 mts')
+        ->set('bobinas.peso', '67000')
+        ->assertSee('Repartido 0 de 67.000 kg')
         ->assertSee('faltan 67.000')
         ->set('entregas.0.cantidad', '50000')
         ->set('entregas.1.cantidad', '17000')
-        ->assertSee('Repartido 67.000 de 67.000 mts')
+        ->assertSee('Repartido 67.000 de 67.000 kg')
         ->assertDontSee('faltan')
         ->set('entregas.1.cantidad', '20000')
         ->assertSee('te pasaste por 3.000');
@@ -718,7 +747,7 @@ test('con retiro en sucursal los campos de flete quedan en gris y sin costo', fu
     App\Models\FletePrecio::create(['flete_zona_id' => $zona->id, 'flete_tramo_id' => $tramo->id, 'precio' => 150000]);
     App\Models\Ajuste::definir(App\Livewire\Fletes\Index::GRUPO_DOLAR, 1000);
 
-    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas')->set('bobinas.cantidad', '67000');
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas')->set('bobinas.peso', '67000');
     $cliente = App\Models\Contacto::firstWhere('razon_social', 'Arcor');
     $cliente->direcciones()->create(['flete_zona_id' => $zona->id, 'direccion' => 'Av. Mitre 1234']);
 
@@ -751,7 +780,7 @@ test('los kg / pallets salen de flete insumos', function () {
 
     cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
-        ->set('bobinas.cantidad', '67000')
+        ->set('bobinas.peso', '67000')
         ->assertSeeHtml('<option value="'.$tramo->id.'">3.500 / 6 pallets</option>');
 });
 
@@ -769,7 +798,7 @@ test('el flete solo lista las zonas donde el cliente tiene direcciones', functio
         ->set('cliente_id', $cliente->id)
         ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
-        ->set('bobinas.cantidad', '67000')
+        ->set('bobinas.peso', '67000')
         ->assertSeeHtml('<option value="'.$caba->id.'">Caba</option>')
         ->assertSeeHtml('<option value="'.$quilmes->id.'">Quilmes</option>')
         ->assertDontSeeHtml('<option value="'.$rosario->id.'">Rosario</option>');
@@ -787,7 +816,7 @@ test('la dirección se limita a la zona del flete elegido', function () {
         ->set('cliente_id', $cliente->id)
         ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
-        ->set('bobinas.cantidad', '67000')
+        ->set('bobinas.peso', '67000')
         // Sin flete elegido no hay direcciones para elegir.
         ->assertSee('Elegí primero el flete')
         ->set('entregas.0.flete_zona_id', (string) $quilmes->id);
@@ -814,7 +843,7 @@ test('la dirección de entrega es solo la del cliente, no la de otro', function 
         ->set('cliente_id', $cliente->id)
         ->set('vendedor_id', Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true])->id)
         ->set('tipo_producto', 'bobinas')
-        ->set('bobinas.cantidad', '67000')
+        ->set('bobinas.peso', '67000')
         ->set('entregas.0.flete_zona_id', (string) $zona->id)
         ->assertSeeHtml('<option value="'.$direccion->id.'">Av. Rivadavia 1324</option>')
         ->assertDontSee('Av. Cabildo 4521');
@@ -823,7 +852,7 @@ test('la dirección de entrega es solo la del cliente, no la de otro', function 
 test('avisa cuando el cliente no tiene direcciones con zona', function () {
     cotizacionIniciada()
         ->set('tipo_producto', 'bobinas')
-        ->set('bobinas.cantidad', '67000')
+        ->set('bobinas.peso', '67000')
         ->assertSee('El cliente no tiene direcciones de entrega con zona');
 });
 
@@ -877,7 +906,8 @@ test('el valor que se suma al ancho de lámina tiene que ser un número', functi
 });
 
 test('sin impresión los datos técnicos quedan bloqueados', function () {
-    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas');
+    // Trilaminado: los tres scrap (uno por material) se ven.
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas')->set('bobinas.laminado', 3);
 
     // Los campos se ven, pero no se pueden completar.
     $formulario->assertSee('Poné')
@@ -1079,7 +1109,7 @@ test('cada familia de insumos define desde cuántas toneladas rige el precio por
 test('se puede agendar una dirección de entrega del cliente desde la cotización', function () {
     $quilmes = App\Models\FleteZona::create(['nombre' => 'Quilmes']);
 
-    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas')->set('bobinas.cantidad', '67000');
+    $formulario = cotizacionIniciada()->set('tipo_producto', 'bobinas')->set('bobinas.peso', '67000');
     $cliente = App\Models\Contacto::firstWhere('razon_social', 'Arcor');
 
     // Sin direcciones el flete avisa y ofrece el +.

@@ -1,10 +1,11 @@
 @php
-    // Lo que se entrega tiene que repartir la Cantidad (mts) cargada en el producto.
+    // Lo que se entrega reparte el Peso (kg) en bobinas y los Envases en el DPK.
     $trabado = $this->sinCantidad;
+    $unidad = $this->unidadEntregas;
     // Con retiro en sucursal los campos de flete se ven pero quedan en gris.
     $retiro = $this->retiroEnSucursal;
     $sinFlete = $trabado || $retiro;
-    $cantidad = (float) ($bobinas['cantidad'] ?: 0);
+    $cantidad = $this->totalARepartir;
     $pendiente = $this->cantidadPendiente;
     $numero = fn (float $valor) => \App\Support\Numero::corto($valor);
     $campo = 'h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none';
@@ -14,7 +15,7 @@
 <div class="px-6 py-6">
     @if ($trabado)
         <p class="mb-5 text-sm text-slate-500">
-            Completá <span class="font-medium text-slate-700">Cantidad (mts)</span> en Datos de producto para cargar las entregas.
+            Completá <span class="font-medium text-slate-700">{{ $this->campoARepartir }}</span> en Datos de producto para cargar las entregas.
         </p>
     @endif
 
@@ -193,7 +194,7 @@
     {{-- Cuánto de la cantidad del producto queda por repartir. --}}
     @unless ($trabado)
         <p class="mt-4 text-xs {{ abs($pendiente) < 0.01 ? 'text-slate-500' : 'text-red-600' }}">
-            Repartido {{ $numero($this->cantidadRepartida) }} de {{ $numero($cantidad) }} mts
+            Repartido {{ $numero($this->cantidadRepartida) }} de {{ $numero($cantidad) }} {{ $unidad }}
             @if ($pendiente > 0.01)
                 — faltan {{ $numero($pendiente) }}
             @elseif ($pendiente < -0.01)

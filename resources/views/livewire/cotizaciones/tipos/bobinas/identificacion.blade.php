@@ -1,9 +1,9 @@
 {{-- Completa las filas del tipo de producto: las medidas de la bobina. --}}
 <x-campo.texto label="Ancho (cm)" modelo="bobinas.ancho" tipo="number" paso="0.01" modificador="live.blur" />
 <x-campo.texto label="Módulos Ancho (cm)" modelo="bobinas.modulos_ancho" tipo="number" paso="0.01" modificador="live.blur" />
+<x-campo.texto label="Ancho refilado (cm)" modelo="bobinas.ancho_refilado" calculado ayuda="Ancho × Módulos Ancho" />
 <x-campo.texto label="Paso (cm)" modelo="bobinas.paso" tipo="number" paso="0.01" modificador="live.blur" />
 <x-campo.texto label="Módulos Desarrollo (cm)" modelo="bobinas.modulos_desarrollo" tipo="number" paso="1" modificador="live.blur" />
-<div class="hidden xl:block"></div>
 
 {{-- El desarrollo sale de la cuenta; al lado, las mangas cargadas para poder sumar la que falte. --}}
 <x-campo.texto label="Desarrollo (cm)" modelo="bobinas.desarrollo" calculado :ayuda="$this->ayudaDesarrollo() ?? 'Paso × módulos de desarrollo'" />

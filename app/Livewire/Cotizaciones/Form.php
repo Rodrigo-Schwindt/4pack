@@ -4,6 +4,7 @@ namespace App\Livewire\Cotizaciones;
 
 use App\Livewire\Fletes\Index as Fletes;
 use App\Models\Ajuste;
+use App\Models\AjusteTexto;
 use App\Models\Contacto;
 use App\Models\Cotizacion;
 use App\Models\ContactoDireccion;
@@ -21,8 +22,11 @@ use App\Models\VariableCosto;
 use App\Models\Vendedor;
 use App\Support\Numero;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\WithFileUploads;
@@ -67,12 +71,16 @@ class Form extends Component
 
     public const RETIRO = 'Retiro en sucursal';
 
+    /**
+     * Trilaminado: dos pegados, uno con solvente y el otro sin.
+     */
+    public const SOLVENTE_MIXTO = 'Mixto';
+
     public const OPCIONES = [
         'si_no' => ['Si', 'No'],
         'categorias' => ['A', 'B', 'C', 'OTRO'],
         'laminaciones' => ['Simple', 'Bi.', 'Tri.'],
         'formas_entrega' => [self::ENVIO, self::RETIRO],
-        'canales' => ['Whats app'],
         'productos' => ['Flowpack bilaminado impreso Carrefour Caseras x 700g'],
         'dias_ff' => ['30'],
     ];
@@ -88,6 +96,12 @@ class Form extends Component
 
     /** Cantidad maxima de materiales del bloque de bobinas. */
     private const MATERIALES = 3;
+
+    /**
+     * Una fila de material. "extra" es la demasia: los cm que se le suman al
+     * ancho refilado para ese material (vacio = el valor por defecto de Ajustes).
+     */
+    private const MATERIAL_VACIO = ['material_id' => '', 'mic' => '', 'proveedor_id' => '', 'extra' => ''];
 
     /** Cuantas laminas lleva el producto: define cuantos materiales se cargan. */
     public const LAMINADOS = [1 => 'Monolaminado', 2 => 'Bilaminado', 3 => 'Trilaminado'];
@@ -152,8 +166,25 @@ class Form extends Component
     /** Datos del tab de Orden de Compra. */
     public array $oc = [];
 
-    /** Archivo de la OC que adjunta el vendedor. */
-    public $archivo_oc = null;
+    /** Archivos que se estan subiendo a la OC (cualquier tipo). */
+    public array $subidasOc = [];
+
+    /**
+     * Archivos adjuntos a la OC: ruta en el disco privado, nombre original,
+     * tamaño y fecha. Bloqueado: la ruta no se puede tocar desde el navegador.
+     *
+     * @var array<int, array{ruta: string, nombre: string, tamanio: int, subido: string}>
+     */
+    #[Locked]
+    public array $archivosOc = [];
+
+    /** Alta al vuelo de un canal de recibo de OC. */
+    public bool $creandoCanal = false;
+
+    public string $nuevoCanal = '';
+
+    /** Tamaño maximo de cada archivo de la OC, en KB. */
+    public const MAXIMO_ARCHIVO_OC = 12288;
 
     /** Alta al vuelo: 'mangas' (global) o 'producto' (del cliente elegido). */
     public ?string $creando = null;
@@ -181,25 +212,488 @@ class Form extends Component
 
     public string $nuevoExtra = '';
 
-    public function mount(?Cotizacion $guardada = null): void
-    {
-        $this->numero = Cotizacion::siguienteNumero();
+    /**
+     * Productos que se suman debajo del primero con "Duplicar" o "Nuevo
+     * producto". Cada uno es un formulario completo desde Datos de producto
+     * para abajo; los Datos generales son los de la cotizacion.
+     *
+     * "grupo" une las opciones de un mismo producto: Duplicar agrega una
+     * opcion al grupo del ultimo producto; Nuevo producto arranca un grupo.
+     * El principal es el grupo GRUPO_PRINCIPAL.
+     *
+     * @var array<int, array{uid: string, grupo: string, tipo_producto: string, bobinas: array, entregas: array, pagos: array, cotizacion: array}>
+     */
+    public array $productosExtra = [];
+
+    public const GRUPO_PRINCIPAL = 'principal';
+
+    /**
+     * Cuando este formulario es uno de esos productos: su clave dentro de la
+     * cotizacion. Vacio en el formulario principal.
+     */
+    public ?string $uidProducto = null;
+
+    /** Numero con el que se muestra el producto ("Datos de producto 2"). */
+    public int $numeroProducto = 1;
+
+    /** Como se nombra en pantalla: "Producto 1 · Opción 2", "Producto 2". */
+    public string $etiquetaProducto = '';
+
+    /** @var array<string, self> productos armados en memoria para los totales y la cotizacion */
+    private array $enMemoria = [];
+
+    /** Ultimo estado que el producto le aviso a la cotizacion. */
+    public string $firmaSync = '';
+
+    /** Guardar o aprobar, en espera de que los productos manden su ultimo estado. */
+    public ?string $accionPendiente = null;
+
+    /** @var array<int, string> productos que todavia no contestaron */
+    public array $esperando = [];
+
+    public function mount(
+        ?Cotizacion $guardada = null,
+        ?array $producto = null,
+        array $generales = [],
+        string $solapaProducto = 'datos',
+        int $numeroProducto = 2,
+        string $etiquetaProducto = '',
+    ): void {
         $this->fecha = now()->format('Y-m-d');
 
         $this->bobinas = $this->bobinasVacias();
         $this->cotizacion = $this->cotizacionVacia();
         $this->oc = ['canal' => '', 'fecha_recibo' => '', 'quien' => '', 'numero' => ''];
         $this->entregas = [$this->entregaVacia(), $this->entregaVacia()];
-        $this->pagos = [
-            ['valor_kgrs' => '', 'dias_ff' => '', 'ac' => '', 'financiacion' => '', 'costo_total' => ''],
-            ['valor_kgrs' => '', 'dias_ff' => '', 'ac' => '', 'financiacion' => '', 'costo_total' => ''],
-            ['valor_kgrs' => '', 'dias_ff' => '', 'ac' => '', 'financiacion' => '', 'costo_total' => ''],
-        ];
+        $this->pagos = $this->pagosVacios();
+
+        // Uno de los productos extra: toma la cabecera de la cotizacion que lo contiene.
+        if ($producto !== null) {
+            $this->montarProducto($producto, $generales);
+            $this->solapa = $solapaProducto;
+            $this->numeroProducto = $numeroProducto;
+            $this->etiquetaProducto = $etiquetaProducto ?: 'Producto '.$numeroProducto;
+            $this->firmaSync = $this->firmaProducto();
+
+            return;
+        }
+
+        $this->numero = Cotizacion::siguienteNumero();
 
         // El parametro se llama "guardada" porque $cotizacion ya es el bloque de textos.
         if ($guardada?->exists) {
             $this->cargar($guardada);
         }
+    }
+
+    /**
+     * Arma el formulario con un producto de la cotizacion y la cabecera que
+     * comparten todos. Lo usan los productos extra y el resumen de totales.
+     *
+     * @param  array<string, mixed>  $producto
+     * @param  array<string, mixed>  $generales
+     */
+    public function montarProducto(array $producto, array $generales): void
+    {
+        $this->uidProducto = (string) ($producto['uid'] ?? '') ?: (string) Str::uuid();
+
+        foreach (['numero', 'fecha', 'cliente_id', 'vendedor_id', 'categoria', 'ajuste_categoria', 'ajuste_vendedor'] as $campo) {
+            if (array_key_exists($campo, $generales)) {
+                $this->{$campo} = $generales[$campo];
+            }
+        }
+
+        $vacias = $this->bobinasVacias();
+        $entregas = $producto['entregas'] ?? [];
+
+        $this->tipo_producto = (string) ($producto['tipo_producto'] ?? '');
+        $this->bobinas = array_replace($vacias, $producto['bobinas'] ?? []);
+        $this->bobinas['materiales'] = $this->materialesCompletos($producto['bobinas']['materiales'] ?? []);
+        $this->entregas = array_map(fn (array $entrega) => array_replace($this->entregaVacia(), $entrega), $entregas ?: [$this->entregaVacia()]);
+        $this->pagos = array_replace($this->pagosVacios(), $producto['pagos'] ?? []);
+        $this->cotizacion = array_replace($this->cotizacionVacia(), $producto['cotizacion'] ?? []);
+
+        $this->recalcularAnchos();
+        $this->recalcularPesoOMetros();
+        $this->recalcularScrap();
+    }
+
+    /**
+     * Lo que se guarda de un producto: todo lo de Datos de producto para abajo.
+     *
+     * @return array<string, mixed>
+     */
+    public function snapshotProducto(): array
+    {
+        return [
+            'uid' => (string) $this->uidProducto,
+            'tipo_producto' => $this->tipo_producto,
+            'bobinas' => $this->bobinas,
+            'entregas' => $this->entregas,
+            'pagos' => $this->pagos,
+            'cotizacion' => $this->cotizacion,
+        ];
+    }
+
+    private function firmaProducto(): string
+    {
+        return md5((string) json_encode($this->snapshotProducto()));
+    }
+
+    /**
+     * La cabecera que comparten todos los productos de la cotizacion.
+     *
+     * @return array<string, mixed>
+     */
+    #[Computed]
+    public function generales(): array
+    {
+        return [
+            'numero' => $this->numero,
+            'fecha' => $this->fecha,
+            'cliente_id' => $this->cliente_id,
+            'vendedor_id' => $this->vendedor_id,
+            'categoria' => $this->categoria,
+            'ajuste_categoria' => $this->ajuste_categoria,
+            'ajuste_vendedor' => $this->ajuste_vendedor,
+        ];
+    }
+
+    /**
+     * Cambia cuando cambia algo de la cabecera que usan los productos: se
+     * rearman con el cliente, el vendedor y la categoria nuevos.
+     */
+    #[Computed]
+    public function claveGenerales(): string
+    {
+        $generales = $this->generales;
+        unset($generales['fecha']);
+
+        return md5((string) json_encode($generales));
+    }
+
+    /**
+     * Solo la cotizacion escucha a sus productos, y cada producto solo el
+     * pedido de mandar su ultimo estado antes de guardar.
+     *
+     * @return array<string, string>
+     */
+    protected function getListeners(): array
+    {
+        return $this->uidProducto === null
+            ? ['producto-actualizado' => 'productoActualizado', 'quitar-producto' => 'quitarProducto']
+            : ['sincronizar-productos' => 'sincronizar'];
+    }
+
+    /**
+     * Cada cambio en un producto extra llega aca, asi la cotizacion lo guarda y lo suma.
+     *
+     * @param  array<string, mixed>  $producto
+     */
+    public function productoActualizado(array $producto): void
+    {
+        $uid = (string) ($producto['uid'] ?? '');
+
+        foreach ($this->productosExtra as $indice => $extra) {
+            if ($extra['uid'] === $uid) {
+                $this->productosExtra[$indice] = ['uid' => $uid, 'grupo' => $extra['grupo'] ?? $uid] + $producto;
+                $this->olvidarCalculos();
+            }
+        }
+
+        if ($this->accionPendiente === null) {
+            return;
+        }
+
+        // Guardar o aprobar esperaban a que contesten todos los productos.
+        $this->esperando = array_values(array_diff($this->esperando, [$uid]));
+
+        if ($this->esperando === []) {
+            $accion = $this->accionPendiente;
+            $this->accionPendiente = null;
+
+            $accion === 'aprobar' ? $this->aprobarAhora() : $this->guardarAhora();
+        }
+    }
+
+    /**
+     * El producto extra vuelve a mandar su estado aunque no haya cambiado.
+     */
+    public function sincronizar(): void
+    {
+        $this->firmaSync = '';
+    }
+
+    /**
+     * Un producto extra le avisa a la cotizacion cada vez que cambia algo.
+     */
+    public function rendered(): void
+    {
+        if ($this->uidProducto === null) {
+            return;
+        }
+
+        $firma = $this->firmaProducto();
+
+        if ($firma === $this->firmaSync) {
+            return;
+        }
+
+        $this->firmaSync = $firma;
+        $this->dispatch('producto-actualizado', producto: $this->snapshotProducto());
+    }
+
+    /**
+     * Copia el ultimo producto (el principal si no hay otros) debajo.
+     */
+    public function duplicarProducto(): void
+    {
+        $base = $this->productosExtra === [] ? $this->snapshotProducto() : end($this->productosExtra);
+
+        if (($base['tipo_producto'] ?? '') === '') {
+            return;
+        }
+
+        // La copia es otra opcion del mismo producto.
+        $grupo = $this->productosExtra === [] ? self::GRUPO_PRINCIPAL : ($base['grupo'] ?? $base['uid']);
+
+        $this->productosExtra[] = ['uid' => (string) Str::uuid(), 'grupo' => $grupo] + $base;
+        $this->olvidarCalculos();
+    }
+
+    /**
+     * Un formulario en blanco para otro producto, del tipo que se elija.
+     */
+    public function nuevoProducto(): void
+    {
+        $uid = (string) Str::uuid();
+
+        $this->productosExtra[] = [
+            'uid' => $uid,
+            // Un producto distinto: arranca su propio grupo.
+            'grupo' => $uid,
+            'tipo_producto' => '',
+            'bobinas' => $this->bobinasVacias(),
+            'entregas' => [$this->entregaVacia()],
+            'pagos' => $this->pagosVacios(),
+            'cotizacion' => $this->cotizacionVacia(),
+        ];
+    }
+
+    public function quitarProducto(string $uid): void
+    {
+        $this->productosExtra = array_values(array_filter($this->productosExtra, fn (array $producto) => $producto['uid'] !== $uid));
+        $this->esperando = array_values(array_diff($this->esperando, [$uid]));
+        $this->olvidarCalculos();
+    }
+
+    /**
+     * Un renglon por producto con su precio al contado y el total, para sumar
+     * la cotizacion completa. Los productos extra se calculan con el mismo
+     * formulario armado en memoria, asi dan igual que en su propia pantalla.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function resumenProductos(): array
+    {
+        $filas = [];
+
+        foreach ($this->listaProductos as $item) {
+            $fila = $this->formularioDe($item)->filaResumen($item['numero']);
+            $fila['etiqueta'] = $item['etiqueta'];
+            $fila['esOpcion'] = $item['opcion'] !== null;
+            $filas[] = $fila;
+        }
+
+        return $filas;
+    }
+
+    /**
+     * Todos los productos en orden, con su grupo y como se llaman en pantalla.
+     * Los grupos numeran los productos; dentro de un grupo con mas de uno, cada
+     * formulario es una opcion.
+     *
+     * @return array<int, array{uid: string, grupo: string, numero: int, producto: int, opcion: ?int, etiqueta: string}>
+     */
+    #[Computed]
+    public function listaProductos(): array
+    {
+        $items = [['uid' => '', 'grupo' => self::GRUPO_PRINCIPAL]];
+
+        foreach ($this->productosExtra as $extra) {
+            $items[] = ['uid' => $extra['uid'], 'grupo' => $extra['grupo'] ?? $extra['uid']];
+        }
+
+        $tamanios = array_count_values(array_column($items, 'grupo'));
+        $grupos = [];
+        $opciones = [];
+
+        foreach ($items as $indice => $item) {
+            $grupo = $item['grupo'];
+            $grupos[$grupo] ??= count($grupos) + 1;
+            $opciones[$grupo] = ($opciones[$grupo] ?? 0) + 1;
+
+            $opcion = $tamanios[$grupo] > 1 ? $opciones[$grupo] : null;
+
+            $items[$indice] += [
+                'numero' => $indice + 1,
+                'producto' => $grupos[$grupo],
+                'opcion' => $opcion,
+                'etiqueta' => 'Producto '.$grupos[$grupo].($opcion !== null ? ' · Opción '.$opcion : ''),
+            ];
+        }
+
+        return $items;
+    }
+
+    /**
+     * El formulario de un producto de la lista: este mismo para el principal,
+     * y para los extra uno armado en memoria con su estado guardado.
+     *
+     * @param  array{uid: string}  $item
+     */
+    private function formularioDe(array $item): self
+    {
+        if ($item['uid'] === '') {
+            return $this;
+        }
+
+        $producto = collect($this->productosExtra)->firstWhere('uid', $item['uid']);
+
+        return $this->enMemoria[$item['uid']] ??= tap(app(self::class), fn (self $formulario) => $formulario->montarProducto($producto, $this->generales));
+    }
+
+    private function olvidarCalculos(): void
+    {
+        $this->enMemoria = [];
+        unset($this->resumenProductos, $this->listaProductos, $this->bloquesCotizacion, $this->productosOrdenCompra, $this->filasOrdenCompra, $this->entregasOrdenCompra, $this->entregasDelPedido);
+    }
+
+    /**
+     * La solapa Cotizacion: un bloque por producto. Cuando un producto tiene
+     * opciones (se duplico), lo que es igual en todas va una sola vez arriba
+     * y cada opcion muestra solo lo que cambia; cantidad y precio van siempre
+     * en la opcion.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function bloquesCotizacion(): array
+    {
+        $grupos = [];
+
+        foreach ($this->listaProductos as $item) {
+            $formulario = $this->formularioDe($item);
+            $textos = $formulario->textosPropuestos;
+
+            $grupos[$item['grupo']][] = [
+                'opcion' => $item['opcion'],
+                'campos' => $formulario->camposCotizacion($textos['cotizacion']),
+                'entregas' => array_map(fn (array $entrega) => [
+                    $entrega['texto_lugar'] ?? '',
+                    $entrega['texto_cantidad'] ?? '',
+                    $entrega['texto_direccion'] ?? '',
+                ], $textos['entregas']),
+            ];
+        }
+
+        $bloques = [];
+
+        foreach (array_values($grupos) as $indice => $opciones) {
+            $primera = $opciones[0];
+
+            // Una sola opcion: la tarjeta completa, como siempre.
+            if (count($opciones) === 1) {
+                $bloques[] = ['numero' => $indice + 1, 'campos' => $primera['campos'], 'entregas' => $primera['entregas'], 'opciones' => []];
+
+                continue;
+            }
+
+            $iguales = fn (string $clave) => collect($opciones)->every(fn (array $opcion) => ($opcion['campos'][$clave][1] ?? null) === ($primera['campos'][$clave][1] ?? null));
+            $siempreEnOpcion = ['cantidad', 'precio'];
+
+            $comunes = array_filter($primera['campos'], fn ($campo, string $clave) => ! in_array($clave, $siempreEnOpcion, true) && $iguales($clave), ARRAY_FILTER_USE_BOTH);
+            $entregasIguales = collect($opciones)->every(fn (array $opcion) => $opcion['entregas'] === $primera['entregas']);
+
+            $bloques[] = [
+                'numero' => $indice + 1,
+                'campos' => $comunes,
+                'entregas' => $entregasIguales ? $primera['entregas'] : [],
+                'opciones' => array_map(fn (array $opcion) => [
+                    'numero' => $opcion['opcion'],
+                    'campos' => array_diff_key($opcion['campos'], $comunes),
+                    'entregas' => $entregasIguales ? [] : $opcion['entregas'],
+                ], $opciones),
+            ];
+        }
+
+        return $bloques;
+    }
+
+    /**
+     * Los campos de la tarjeta de la cotizacion, en el orden del Figma:
+     * clave => [titulo, texto, ejemplo].
+     *
+     * @param  array<string, string>  $textos
+     * @return array<string, array{0: string, 1: string, 2: string}>
+     */
+    private function camposCotizacion(array $textos): array
+    {
+        $campos = $this->esDpk
+            ? [
+                'producto' => ['Producto', 'Doypack galletitas x 300g con zipper'],
+                'materiales' => ['Materiales', 'Poliester Cristal de 12 mic + Polietileno Dpk de 130 mic'],
+                'impresion' => ['Impresión', '4 colores'],
+                'laminacion' => ['Laminación', 'Libre de solventes Apto alimentos'],
+                'anchos' => ['Medidas', '15 x 22 cm + fuelle 8 cm'],
+                'cantidad' => ['Cantidad', '30.000 envases +/- 10%'],
+                'precio' => ['Precio', 'U$S 164,06 por millar + IVA'],
+            ]
+            : [
+                'producto' => ['Producto', 'Flowpack Bilaminado impreso Carrefour Caseras x 700g'],
+                'materiales' => ['Materiales', 'Bopp Mate de 20 mic + Pe Blanco 45 mic'],
+                'impresion' => ['Impresión', '8 colores con Fotocromía HD'],
+                'laminacion' => ['Laminación', 'Libre de solventes Apto alimentos'],
+                'anchos' => ['Anchos de bobina', '580 mm Buje 3´´'],
+                'paso' => ['Paso', '580 mm'],
+                'cantidad' => ['Cantidad', '67.000 kg +/- 10%'],
+                'precio' => ['Precio', 'U$S 7,99 por kg + IVA'],
+            ];
+
+        return array_map(fn (string $clave) => [$campos[$clave][0], (string) ($textos[$clave] ?? ''), $campos[$clave][1]], array_combine(array_keys($campos), array_keys($campos)));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function filaResumen(int $numero): array
+    {
+        $r = $this->tipo_producto === '' ? null : $this->calculoRentabilidad;
+        $peso = (float) ($this->bobinas['peso'] ?: 0);
+        $envases = (float) ($this->bobinas['envases'] ?: 0);
+
+        // Bobinas se cotizan por kilo y el DPK por millar de envases.
+        $unidades = $this->esDpk ? $envases / 1000 : $peso;
+
+        return [
+            'numero' => $numero,
+            'tipo' => self::TIPOS_PRODUCTO[$this->tipo_producto] ?? 'Sin tipo de producto',
+            'producto' => $this->bobinas['producto_id'] ? (string) ContactoProducto::find($this->bobinas['producto_id'])?->nombre : '',
+            'cantidad' => $this->esDpk ? Numero::corto($envases, 0).' envases' : Numero::corto($peso).' kg',
+            'unidad' => $this->esDpk ? 'millar' : 'kg',
+            'unitario' => $r['contado'] ?? null,
+            'total' => $r === null ? null : $r['contado'] * $unidades,
+            'peso' => $peso,
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, string>>
+     */
+    private function pagosVacios(): array
+    {
+        return array_fill(0, 3, ['valor_kgrs' => '', 'dias_ff' => '', 'ac' => '', 'financiacion' => '', 'costo_total' => '']);
     }
 
     /**
@@ -222,14 +716,21 @@ class Form extends Component
         $datos = $cotizacion->datos ?? [];
 
         $this->bobinas = array_replace($this->bobinas, $datos['bobinas'] ?? []);
-        $this->bobinas['materiales'] = array_replace($this->bobinasVacias()['materiales'], $datos['bobinas']['materiales'] ?? []);
+        $this->bobinas['materiales'] = $this->materialesCompletos($datos['bobinas']['materiales'] ?? []);
         $this->cotizacion = array_replace($this->cotizacion, $datos['cotizacion'] ?? []);
         $this->oc = array_replace($this->oc, $datos['oc'] ?? []);
+        $this->archivosOc = array_values($datos['oc_archivos'] ?? []);
         $this->pagos = array_replace($this->pagos, $datos['pagos'] ?? []);
 
         if (! empty($datos['entregas'])) {
             $this->entregas = array_map(fn (array $entrega) => array_replace($this->entregaVacia(), $entrega), $datos['entregas']);
         }
+
+        $this->productosExtra = array_values(array_map(function (array $producto) {
+            $uid = (string) ($producto['uid'] ?? '') ?: (string) Str::uuid();
+
+            return ['uid' => $uid, 'grupo' => (string) ($producto['grupo'] ?? '') ?: $uid] + $producto;
+        }, $datos['productos_extra'] ?? []));
 
         // Los calculados se rehacen con los datos y parametros de hoy.
         $this->recalcularAnchos();
@@ -242,6 +743,37 @@ class Form extends Component
      * completar: solo exige cliente, vendedor y fecha.
      */
     public function guardar(): void
+    {
+        if ($this->pedirProductos('guardar')) {
+            return;
+        }
+
+        $this->guardarAhora();
+    }
+
+    /**
+     * Con productos extra en pantalla, antes de guardar se les pide el ultimo
+     * estado: un cambio recien hecho en uno puede no haber llegado todavia.
+     * Cuando contestan todos se retoma (ver productoActualizado).
+     */
+    private function pedirProductos(string $accion): bool
+    {
+        // Solo en Datos se editan; en las otras solapas ya estan al dia.
+        if ($this->productosExtra === [] || $this->solapa !== 'datos') {
+            return false;
+        }
+
+        // Si falta la cabecera, el error se ve en el momento.
+        $this->validarCabecera();
+
+        $this->accionPendiente = $accion;
+        $this->esperando = array_column($this->productosExtra, 'uid');
+        $this->dispatch('sincronizar-productos');
+
+        return true;
+    }
+
+    private function guardarAhora(): void
     {
         $esNueva = $this->guardada === null;
 
@@ -260,6 +792,15 @@ class Form extends Component
      * aprobadas por dia con esa fecha.
      */
     public function aprobar(): void
+    {
+        if ($this->pedirProductos('aprobar')) {
+            return;
+        }
+
+        $this->aprobarAhora();
+    }
+
+    private function aprobarAhora(): void
     {
         $esNueva = $this->guardada === null;
 
@@ -285,7 +826,7 @@ class Form extends Component
     /**
      * Valida lo minimo, crea o actualiza, y deja la actividad del alta.
      */
-    private function persistir(): void
+    private function validarCabecera(): void
     {
         $this->validate([
             'cliente_id' => ['required', 'exists:contactos,id'],
@@ -293,6 +834,11 @@ class Form extends Component
             'fecha' => ['required', 'date'],
             'tipo_producto' => ['nullable', 'string'],
         ], attributes: ['cliente_id' => 'cliente', 'vendedor_id' => 'vendedor', 'fecha' => 'fecha']);
+    }
+
+    private function persistir(): void
+    {
+        $this->validarCabecera();
 
         // Los textos y las condiciones de pago viajan ya completados.
         $this->completarTextos();
@@ -313,11 +859,21 @@ class Form extends Component
                 'pagos' => $this->pagos,
                 'cotizacion' => $this->cotizacion,
                 'oc' => $this->oc,
+                'oc_archivos' => $this->archivosOc,
+                // Los productos que se sumaron con Duplicar / Nuevo producto.
+                'productos_extra' => $this->productosExtra,
             ],
         ];
 
         if ($this->guardada) {
+            $antes = array_column($this->guardada->datos['oc_archivos'] ?? [], 'ruta');
+
             $this->guardada->update($datos);
+
+            // Lo que se quito de la OC ya no lo usa nadie.
+            foreach (array_diff($antes, array_column($this->archivosOc, 'ruta')) as $ruta) {
+                Storage::disk('local')->delete($ruta);
+            }
 
             return;
         }
@@ -331,6 +887,290 @@ class Form extends Component
             'descripcion' => 'Se creó la cotización '.$this->numero,
             'autor' => Vendedor::find($this->vendedor_id)?->nombre ?? auth()->user()->name,
         ]);
+    }
+
+    /**
+     * Cada archivo que se elige se guarda en el disco privado y se suma a la
+     * lista de la OC. Cualquier tipo de archivo; los guarda Guardar.
+     */
+    public function updatedSubidasOc(): void
+    {
+        $this->validate(
+            ['subidasOc.*' => ['file', 'max:'.self::MAXIMO_ARCHIVO_OC]],
+            ['subidasOc.*.max' => 'Cada archivo puede pesar hasta '.(self::MAXIMO_ARCHIVO_OC / 1024).' MB.'],
+            ['subidasOc.*' => 'archivo'],
+        );
+
+        foreach ($this->subidasOc as $archivo) {
+            $this->archivosOc[] = [
+                'ruta' => $archivo->store('ordenes-compra', 'local'),
+                'nombre' => $archivo->getClientOriginalName(),
+                'tamanio' => (int) $archivo->getSize(),
+                'subido' => now()->format('d/m/Y H:i'),
+            ];
+        }
+
+        $this->subidasOc = [];
+    }
+
+    public function descargarArchivoOc(int $indice)
+    {
+        $archivo = $this->archivosOc[$indice] ?? null;
+
+        if ($archivo === null || ! Storage::disk('local')->exists($archivo['ruta'])) {
+            $this->addError('subidasOc', 'Ese archivo ya no está disponible.');
+
+            return null;
+        }
+
+        return Storage::disk('local')->download($archivo['ruta'], $archivo['nombre']);
+    }
+
+    /**
+     * Sale de la lista; del disco se borra al guardar (si no se guarda, sigue).
+     */
+    public function quitarArchivoOc(int $indice): void
+    {
+        unset($this->archivosOc[$indice]);
+        $this->archivosOc = array_values($this->archivosOc);
+    }
+
+    public function abrirCanal(): void
+    {
+        $this->creandoCanal = true;
+        $this->nuevoCanal = '';
+        $this->resetValidation('nuevoCanal');
+    }
+
+    public function cancelarCanal(): void
+    {
+        $this->creandoCanal = false;
+        $this->nuevoCanal = '';
+        $this->resetValidation('nuevoCanal');
+    }
+
+    /**
+     * El canal nuevo queda en Configuración > Ajustes > Canales de OC y elegido.
+     */
+    public function guardarCanal(): void
+    {
+        $this->validate(['nuevoCanal' => ['required', 'string', 'max:60']], attributes: ['nuevoCanal' => 'canal']);
+
+        $canal = AjusteTexto::firstOrCreate(['grupo' => AjusteTexto::CANALES_OC, 'texto' => trim($this->nuevoCanal)]);
+
+        $this->oc['canal'] = $canal->texto;
+        $this->cancelarCanal();
+    }
+
+    /**
+     * Enviar pedido: guarda la OC y pasa la cotizacion a Finalizada.
+     */
+    public function enviarPedido(): void
+    {
+        $this->validarCabecera();
+        $this->validate(['oc.numero' => ['required', 'string', 'max:60']], attributes: ['oc.numero' => 'N° OC']);
+
+        $esNueva = $this->guardada === null;
+
+        $this->persistir();
+
+        if ($this->guardada->estado !== Cotizacion::FINALIZADA) {
+            $this->guardada->update(['estado' => Cotizacion::FINALIZADA]);
+
+            $this->guardada->cliente?->actividades()->create([
+                'fecha' => now(),
+                'descripcion' => 'Se envió el pedido de la cotización '.$this->numero.' (OC '.$this->oc['numero'].')',
+                'autor' => $this->guardada->vendedor?->nombre ?? auth()->user()->name,
+            ]);
+        }
+
+        session()->flash('status', 'Pedido enviado: la cotización '.$this->numero.' pasó a Finalizada.');
+
+        if ($esNueva) {
+            $this->redirectRoute('cotizaciones.edit', $this->guardada, navigate: true);
+        }
+    }
+
+    /**
+     * Lo que entra en la OC y en Entrega: todos los formularios de la
+     * cotizacion, sean opciones de un producto o productos nuevos, cada uno
+     * con sus entregas.
+     *
+     * @return array<int, array{grupo: string, producto: int, opcion: ?int, etiqueta: string, elegida: string}>
+     */
+    #[Computed]
+    public function productosOrdenCompra(): array
+    {
+        return array_map(fn (array $item) => [
+            'grupo' => $item['grupo'],
+            'producto' => $item['producto'],
+            'opcion' => $item['opcion'],
+            'etiqueta' => $item['etiqueta'],
+            // El principal no tiene uid: va con la clave de su grupo.
+            'elegida' => $item['uid'] ?: self::GRUPO_PRINCIPAL,
+        ], $this->listaProductos);
+    }
+
+    /**
+     * La tabla de la OC: tipo, producto, caracteristicas, cantidad y precio al
+     * contado de cada producto y de cada opcion.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function filasOrdenCompra(): array
+    {
+        $filas = [];
+
+        foreach ($this->productosOrdenCompra as $producto) {
+            $formulario = $this->formularioDe(['uid' => $producto['elegida'] === self::GRUPO_PRINCIPAL ? '' : $producto['elegida']]);
+            $resumen = $formulario->filaResumen($producto['producto']);
+            $campos = $formulario->camposCotizacion($formulario->textosPropuestos['cotizacion']);
+
+            $caracteristicas = [];
+            foreach (['materiales', 'anchos', 'paso', 'impresion', 'laminacion'] as $clave) {
+                if (($campos[$clave][1] ?? '') !== '') {
+                    $caracteristicas[] = $campos[$clave][0].': '.$campos[$clave][1];
+                }
+            }
+
+            $filas[] = [
+                'tipo' => $resumen['tipo'],
+                'producto' => $resumen['producto'] ?: '-',
+                'opcion' => $producto['opcion'] !== null ? 'Opción '.$producto['opcion'] : null,
+                'caracteristicas' => $caracteristicas,
+                'cantidad' => $resumen['cantidad'],
+                'precio_unitario' => $resumen['unitario'] === null ? '-' : Numero::usd($resumen['unitario']).' / '.$resumen['unidad'],
+                'importe_total' => Numero::usd($resumen['total']),
+            ];
+        }
+
+        return $filas;
+    }
+
+    /**
+     * Todas las entregas de la cotizacion, con su fecha pactada: una por cada
+     * entrega de cada formulario. Las del principal viven en "entregas" y las
+     * de los otros en su propio producto.
+     *
+     * @return array<int, array{etiqueta: string, lugar: string, modelo: string}>
+     */
+    #[Computed]
+    public function entregasOrdenCompra(): array
+    {
+        $varios = count($this->productosOrdenCompra) > 1;
+        $lista = [];
+
+        foreach ($this->productosOrdenCompra as $producto) {
+            $uid = $producto['elegida'] === self::GRUPO_PRINCIPAL ? '' : $producto['elegida'];
+            $indice = $uid === '' ? null : collect($this->productosExtra)->search(fn (array $extra) => $extra['uid'] === $uid);
+            $entregas = $indice === null ? $this->entregas : ($this->productosExtra[$indice]['entregas'] ?? []);
+            $prefijo = $indice === null ? 'entregas' : 'productosExtra.'.$indice.'.entregas';
+
+            foreach ($entregas as $numero => $entrega) {
+                $lista[] = [
+                    'etiqueta' => ($varios ? 'P'.$producto['producto'].($producto['opcion'] !== null ? ' Op'.$producto['opcion'] : '').' · ' : '').'Entrega '.($numero + 1),
+                    'titulo' => ($varios ? $producto['etiqueta'].' · ' : '').'Entrega '.($numero + 1),
+                    'lugar' => (string) ($entrega['texto_lugar'] ?? ''),
+                    'modelo' => $prefijo.'.'.$numero.'.fecha_entrega',
+                ];
+            }
+        }
+
+        return $lista;
+    }
+
+    /**
+     * Solapa Entrega: las entregas de todos los formularios de la cotizacion,
+     * lo pactado contra lo entregado y la comision que le toca a cada una.
+     *
+     *   Cumplimiento       = entregada / a entregar
+     *   Comision proyectada = comision del producto x a entregar / total del producto
+     *   Comision real       = proyectada x cumplimiento
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function entregasDelPedido(): array
+    {
+        $varios = count($this->productosOrdenCompra) > 1;
+        $lista = [];
+
+        foreach ($this->productosOrdenCompra as $producto) {
+            [$uid, $prefijo, $entregas] = $this->entregasDeLoComprado($producto);
+            $formulario = $this->formularioDe(['uid' => $uid]);
+
+            $total = $formulario->totalARepartir;
+            $comision = $formulario->tipo_producto === '' ? null : ($formulario->calculoRentabilidad['comisionTotal'] ?? null);
+            $nombre = $formulario->bobinas['producto_id'] ? (string) ContactoProducto::find($formulario->bobinas['producto_id'])?->nombre : '';
+            $antes = $varios ? $producto['etiqueta'].' · ' : '';
+
+            foreach ($entregas as $numero => $entrega) {
+                $aEntregar = (float) ($entrega['cantidad'] ?: 0);
+                $cargada = trim((string) ($entrega['cantidad_entregada'] ?? ''));
+                $entregada = $cargada === '' ? null : (float) $cargada;
+                $cumplimiento = $entregada !== null && $aEntregar > 0 ? $entregada / $aEntregar * 100 : null;
+                $proyectada = $comision !== null && $total > 0 ? $comision * $aEntregar / $total : null;
+
+                $lista[] = [
+                    'titulo' => $antes.($numero + 1).'° entrega',
+                    'nombre' => $antes.'Entrega '.($numero + 1),
+                    'modelo' => $prefijo.'.'.$numero,
+                    'producto' => $nombre,
+                    'a_entregar' => $aEntregar,
+                    'unidad' => $formulario->unidadEntregas,
+                    'entregada' => $entregada,
+                    'cumplimiento' => $cumplimiento,
+                    'proyectada' => $proyectada,
+                    'real' => $proyectada !== null && $cumplimiento !== null ? $proyectada * $cumplimiento / 100 : null,
+                ];
+            }
+        }
+
+        return $lista;
+    }
+
+    /**
+     * Donde viven las entregas de un formulario: las del principal en
+     * "entregas" y las de los otros dentro de su producto.
+     *
+     * @param  array{elegida: string}  $producto
+     * @return array{0: string, 1: string, 2: array<int, array<string, mixed>>}
+     */
+    private function entregasDeLoComprado(array $producto): array
+    {
+        $uid = $producto['elegida'] === self::GRUPO_PRINCIPAL ? '' : $producto['elegida'];
+        $indice = $uid === '' ? false : collect($this->productosExtra)->search(fn (array $extra) => $extra['uid'] === $uid);
+
+        return $indice === false
+            ? [$uid, 'entregas', $this->entregas]
+            : [$uid, 'productosExtra.'.$indice.'.entregas', $this->productosExtra[$indice]['entregas'] ?? []];
+    }
+
+    /**
+     * Zona, direccion y codigo postal de la entrega arrancan con lo pactado en
+     * Datos; se pueden cambiar si se entrego en otro lado.
+     */
+    private function completarEntregasDelPedido(): void
+    {
+        foreach ($this->productosOrdenCompra as $producto) {
+            [, $prefijo, $entregas] = $this->entregasDeLoComprado($producto);
+
+            foreach ($entregas as $numero => $entrega) {
+                $direccion = ($entrega['direccion_id'] ?? '') ? ContactoDireccion::find($entrega['direccion_id']) : null;
+                $propuestos = [
+                    'zona' => (string) ($entrega['texto_lugar'] ?? ''),
+                    'direccion_entrega' => (string) ($direccion?->direccion ?? ''),
+                    'codigo_postal' => (string) ($direccion?->codigo_postal ?? ''),
+                ];
+
+                foreach ($propuestos as $campo => $valor) {
+                    if (trim((string) ($entrega[$campo] ?? '')) === '' && $valor !== '') {
+                        data_set($this, $prefijo.'.'.$numero.'.'.$campo, $valor);
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -383,6 +1223,16 @@ class Form extends Component
         $this->bobinas['producto_id'] = null;
         $this->solapa = 'datos';
         $this->cancelarAlta();
+
+        foreach ($this->productosExtra as $indice => $producto) {
+            $this->productosExtra[$indice]['bobinas']['producto_id'] = null;
+
+            foreach ($producto['entregas'] ?? [] as $numero => $entrega) {
+                foreach (['flete_zona_id', 'flete_subzona_id', 'direccion_id'] as $campo) {
+                    $this->productosExtra[$indice]['entregas'][$numero][$campo] = '';
+                }
+            }
+        }
     }
 
     /**
@@ -650,6 +1500,10 @@ class Form extends Component
         }
 
         // Cada material tiene sus proveedores: al cambiarlo se propone el elegido.
+        if (preg_match('/^materiales\.\d+\.extra$/', $clave)) {
+            $this->recalcularAnchos();
+        }
+
         if (preg_match('/^materiales\.(\d+)\.material_id$/', $clave, $partes)) {
             $indice = (int) $partes[1];
             $elegido = InsumoItem::whereKey($this->bobinas['materiales'][$indice]['material_id'] ?: 0)
@@ -966,8 +1820,6 @@ class Form extends Component
     public function calculoProveedores(): array
     {
         $cantidad = (float) ($this->bobinas['cantidad'] ?: 0);
-        $anchoLamina = (float) ($this->bobinas['ancho_lamina'] ?: 0);
-        $scraps = ['impresion_scrap', 'laminacion_scrap', 'bilaminacion_scrap'];
 
         // Denominador de "Valor x kgrs": los kilos por 1000 metros de toda la lamina (SUMA(L15:L17)).
         $kgrsTotales = array_sum($this->kgrsPorMilMetros);
@@ -986,11 +1838,12 @@ class Form extends Component
             $mic = (float) ($material['mic'] ?: 0);
             $pesoEsp = $item->peso_especifico === null ? null : (float) $item->peso_especifico;
             $costo = $this->costoDelMaterial($item, $material['proveedor_id'] ?? null);
-            $scrap = (float) ($this->bobinas[$scraps[$indice] ?? ''] ?: 0);
             $metros = $this->metrosATrabajar($indice);
 
-            // K: kilos por 1000 m con ancho de lamina + scrap. L: con ancho refilado. J: K por los metros.
-            $kgrsLamina = $pesoEsp !== null && $mic > 0 && $anchoLamina > 0 ? $pesoEsp * $mic * ($anchoLamina + $scrap) / 100 : null;
+            // K: kilos por 1000 m con el ancho del material (refilado + demasia + scrap de su paso).
+            // L: con ancho refilado. J: K por los metros.
+            $anchoMaterial = $this->anchoMaterial($indice);
+            $kgrsLamina = $pesoEsp !== null && $mic > 0 && $anchoMaterial !== null ? $pesoEsp * $mic * $anchoMaterial / 100 : null;
             $kgrsRefilado = $this->kgrsPorMilMetros[$indice] ?? null;
             $kgrsTrabajar = $kgrsLamina === null ? null : $kgrsLamina * $metros / 1000;
 
@@ -1329,13 +2182,30 @@ class Form extends Component
     }
 
     /**
-     * Pasadas de laminacion sin solvente y con solvente (J7 y N7 de la
-     * planilla), segun Laminación (Simple / Bi. / Tri.) y Solvente (Si / No).
+     * Pegados de laminacion sin solvente y con solvente.
+     *
+     * Bobinas: salen del Laminado. Cada pegado une dos laminas (bi = 1,
+     * tri = 2) y el Solvente dice como es cada uno: Si = todos con solvente,
+     * No = todos sin, Mixto (solo tri) = uno con y otro sin. Monolaminado no
+     * tiene pegados.
+     *
+     * DPK: no elige laminado; sigue como la planilla, Laminación (Simple /
+     * Bi. / Tri.) da las pasadas sin solvente y Solvente = Si suma una con.
      *
      * @return array{sinSolvente: int, conSolvente: int}
      */
     private function pasadasDeLaminacion(): array
     {
+        if (! $this->esDpk) {
+            $pegados = max((int) ($this->bobinas['laminado'] ?? 0) - 1, 0);
+
+            return match ($this->bobinas['solvente'] ?? '') {
+                'Si' => ['sinSolvente' => 0, 'conSolvente' => $pegados],
+                self::SOLVENTE_MIXTO => $pegados >= 2 ? ['sinSolvente' => 1, 'conSolvente' => 1] : ['sinSolvente' => $pegados, 'conSolvente' => 0],
+                default => ['sinSolvente' => $pegados, 'conSolvente' => 0],
+            };
+        }
+
         $pasadas = match ($this->bobinas['laminacion'] ?? '') {
             'Simple' => 1,
             'Bi.' => 2,
@@ -1347,7 +2217,7 @@ class Form extends Component
         // (Laminacion) y si ademas lleva una con solvente (Solvente = Si).
         return [
             'sinSolvente' => $pasadas,
-            'conSolvente' => ($this->bobinas['solvente'] ?? '') === 'Si' ? 1 : 0,
+            'conSolvente' => in_array($this->bobinas['solvente'] ?? '', ['Si', self::SOLVENTE_MIXTO], true) ? 1 : 0,
         ];
     }
 
@@ -2341,7 +3211,7 @@ class Form extends Component
         $refilado = $ancho * $modulos;
 
         $this->bobinas['ancho_refilado'] = $this->sinCerosDeMas($refilado);
-        $this->bobinas['ancho_lamina'] = $this->sinCerosDeMas($refilado + $this->anchoLaminaExtra);
+        $this->bobinas['ancho_lamina'] = $this->sinCerosDeMas($refilado + $this->extraMaterial(0));
 
         $this->recalcularPesoOMetros();
     }
@@ -2394,10 +3264,59 @@ class Form extends Component
 
         $this->bobinas['ancho_desplegado'] = $this->sinCerosDeMas($desplegado);
         $this->bobinas['ancho_refilado'] = $this->sinCerosDeMas($refilado);
-        $this->bobinas['ancho_lamina'] = $this->sinCerosDeMas($refilado + Parametro::valor(Parametro::DPK_ANCHO_LAMINA_EXTRA));
+        $this->bobinas['ancho_lamina'] = $this->sinCerosDeMas($refilado + $this->extraMaterial(0));
 
         $this->recalcularPeso();
         $this->recalcularScrap();
+    }
+
+    /**
+     * Cm que se le suman al ancho refilado para un material: su "Demasia" si la
+     * cargaron, y si no el valor por defecto de Ajustes (2 en bobinas, 3 en DPK).
+     */
+    public function extraMaterial(int $indice): float
+    {
+        $cargado = trim((string) ($this->bobinas['materiales'][$indice]['extra'] ?? ''));
+
+        if ($cargado !== '' && is_numeric($cargado)) {
+            return (float) $cargado;
+        }
+
+        return $this->esDpk ? $this->anchoLaminaExtraDpk : $this->anchoLaminaExtra;
+    }
+
+    /**
+     * Ancho con el que se compra cada material: ancho refilado + su demasia +
+     * el scrap de su paso (material 1 impresion, 2 laminacion, 3 bilaminacion).
+     */
+    public function anchoMaterial(int $indice): ?float
+    {
+        $refilado = (float) ($this->bobinas['ancho_refilado'] ?: 0);
+
+        if ($refilado <= 0) {
+            return null;
+        }
+
+        $scrapFila = ['impresion_scrap', 'laminacion_scrap', 'bilaminacion_scrap'][$indice] ?? null;
+
+        return $refilado + $this->extraMaterial($indice) + (float) ($scrapFila ? ($this->bobinas[$scrapFila] ?: 0) : 0);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $guardados
+     * @return array<int, array<string, mixed>>
+     */
+    private function materialesCompletos(array $guardados): array
+    {
+        $materiales = array_fill(0, self::MATERIALES, self::MATERIAL_VACIO);
+
+        foreach ($guardados as $indice => $material) {
+            if (isset($materiales[$indice])) {
+                $materiales[$indice] = array_replace(self::MATERIAL_VACIO, $material);
+            }
+        }
+
+        return $materiales;
     }
 
     #[Computed]
@@ -2498,12 +3417,36 @@ class Form extends Component
     }
 
     /**
-     * Sin Cantidad (mts) no hay nada que repartir entre las entregas.
+     * Lo que se reparte entre las entregas: el Peso (kg) en bobinas y los
+     * Envases en el DPK, como se cotiza cada uno.
+     */
+    #[Computed]
+    public function totalARepartir(): float
+    {
+        return (float) ($this->esDpk ? ($this->bobinas['envases'] ?: 0) : ($this->bobinas['peso'] ?: 0));
+    }
+
+    /** "kg" o "envases": la unidad de las entregas. */
+    #[Computed]
+    public function unidadEntregas(): string
+    {
+        return $this->esDpk ? 'envases' : 'kg';
+    }
+
+    /** El campo de Datos de producto que hay que completar para repartir. */
+    #[Computed]
+    public function campoARepartir(): string
+    {
+        return $this->esDpk ? 'Envases (unidades)' : 'Peso (kg)';
+    }
+
+    /**
+     * Sin peso (o envases) no hay nada que repartir entre las entregas.
      */
     #[Computed]
     public function sinCantidad(): bool
     {
-        return trim($this->bobinas['cantidad'] ?? '') === '';
+        return $this->totalARepartir <= 0;
     }
 
     /**
@@ -2521,7 +3464,7 @@ class Form extends Component
     #[Computed]
     public function cantidadPendiente(): float
     {
-        return (float) ($this->bobinas['cantidad'] ?? 0) - $this->cantidadRepartida;
+        return $this->totalARepartir - $this->cantidadRepartida;
     }
 
     /**
@@ -2601,8 +3544,16 @@ class Form extends Component
 
         foreach ($this->bobinas['materiales'] as $indice => $material) {
             if ($indice >= $laminado) {
-                $this->bobinas['materiales'][$indice] = ['material_id' => '', 'mic' => '', 'proveedor_id' => ''];
+                $this->bobinas['materiales'][$indice] = self::MATERIAL_VACIO;
             }
+        }
+
+        // Monolaminado no tiene pegados: sin liquido ni solvente. Mixto es solo del trilaminado.
+        if ($laminado === 1) {
+            $this->bobinas['contiene_liquido'] = '';
+            $this->bobinas['solvente'] = '';
+        } elseif ($laminado === 2 && ($this->bobinas['solvente'] ?? '') === self::SOLVENTE_MIXTO) {
+            $this->bobinas['solvente'] = '';
         }
 
         $this->recalcularPesoOMetros();
@@ -2652,7 +3603,7 @@ class Form extends Component
             'modulos_ancho' => '',
             'desarrollo' => '',
             'laminado' => 2,
-            'materiales' => array_fill(0, self::MATERIALES, ['material_id' => '', 'mic' => '', 'proveedor_id' => '']),
+            'materiales' => array_fill(0, self::MATERIALES, self::MATERIAL_VACIO),
             'bonifica_polimeros' => '',
             'cantidad' => '',
             'peso' => '',
@@ -2785,7 +3736,8 @@ class Form extends Component
         $laminacion = match (true) {
             $laminado <= 1 => 'Sin laminar',
             ($this->bobinas['solvente'] ?? '') === 'Si' => 'Con solvente',
-            ($this->bobinas['laminacion'] ?? '') !== '' => 'Libre de solventes Apto alimentos',
+            ($this->bobinas['solvente'] ?? '') === self::SOLVENTE_MIXTO => 'Laminación mixta (con y sin solvente)',
+            $this->esDpk ? ($this->bobinas['laminacion'] ?? '') !== '' : true => 'Libre de solventes Apto alimentos',
             default => '',
         };
 
@@ -2798,7 +3750,7 @@ class Form extends Component
 
             $entregas[] = [
                 'texto_lugar' => $this->retiroEnSucursal ? self::RETIRO : ($zona ?? ''),
-                'texto_cantidad' => $cantidad > 0 ? 'Cantidad '.$num($cantidad).' mts' : '',
+                'texto_cantidad' => $cantidad > 0 ? 'Cantidad '.$num($cantidad).' '.$this->unidadEntregas : '',
                 'texto_direccion' => $direccion ? 'Dirección '.$direccion : '',
             ];
         }
@@ -2930,7 +3882,20 @@ class Form extends Component
         $this->completarPagos();
         $this->completarTextos();
 
-        return view('livewire.cotizaciones.form', [
+        $vista = $this->uidProducto === null ? 'livewire.cotizaciones.form' : 'livewire.cotizaciones.producto';
+
+        // Los productos extra que se muestran se rearman con el estado que tienen ahora.
+        $this->olvidarCalculos();
+
+        // La OC guarda que opcion compro el cliente de cada producto (la primera si no se eligio).
+        if ($this->uidProducto === null) {
+            // Lo pactado se copia al abrir la solapa: desde ahi es lo que paso de verdad.
+            if ($this->solapa === 'entrega') {
+                $this->completarEntregasDelPedido();
+            }
+        }
+
+        $pantalla = view($vista, [
             'estados' => Cotizacion::ESTADOS,
             'clientes' => Contacto::enEstado(Contacto::CLIENTE)
                 ->orderBy('razon_social')
@@ -2952,6 +3917,10 @@ class Form extends Component
             'productos' => $this->sinCliente
                 ? collect()
                 : ContactoProducto::where('contacto_id', $this->cliente_id)->orderBy('nombre')->pluck('nombre', 'id'),
-        ])->title(($this->guardada ? 'Cotización ' : 'Nueva cotización ').$this->numero);
+        ]);
+
+        return $this->uidProducto === null
+            ? $pantalla->title(($this->guardada ? 'Cotización ' : 'Nueva cotización ').$this->numero)
+            : $pantalla;
     }
 }

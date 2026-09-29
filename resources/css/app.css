@@ -83,7 +83,13 @@ input:-webkit-autofill:active {
 /*
  * El campo de fecha lleva su propio icono a la izquierda: el boton nativo de
  * Chrome se hace invisible pero ocupa todo el input, asi cliquear abre el picker.
+ * El input tiene que ser "relative": si no, el boton invisible se estira hasta
+ * el primer contenedor posicionado y tocar fuera del campo abre el calendario.
  */
+.campo-fecha {
+    position: relative;
+}
+
 .campo-fecha::-webkit-calendar-picker-indicator {
     position: absolute;
     inset: 0;

@@ -86,15 +86,20 @@
             </h2>
 
             <form wire:submit="agregar" class="mb-6 flex flex-wrap items-start gap-3">
-                <div class="flex w-40 flex-col gap-1.5">
+                <div class="flex {{ $esTexto ? 'w-64' : 'w-40' }} flex-col gap-1.5">
                     <label for="valor" class="sr-only">Nuevo valor</label>
                     <input
                         id="valor"
-                        type="number"
-                        step="0.01"
-                        min="0"
+                        @if ($esTexto)
+                            type="text"
+                            maxlength="60"
+                        @else
+                            type="number"
+                            step="0.01"
+                            min="0"
+                        @endif
                         wire:model="valor"
-                        placeholder="0"
+                        placeholder="{{ $esTexto ? 'Ej.: Email' : '0' }}"
                         class="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-[#1c5480] focus:ring-1 focus:ring-[#1c5480] focus:outline-none"
                     />
                 </div>
@@ -122,15 +127,16 @@
                     </thead>
                     <tbody>
                         @foreach ($valores as $item)
+                            @php $mostrar = $esTexto ? $item->valor : \App\Support\Numero::corto($item->valor, 4); @endphp
                             <tr wire:key="valor-{{ $item->id }}" class="border-b border-slate-100 last:border-0">
-                                <td class="px-2 py-3 text-sm text-slate-800">{{ \App\Support\Numero::corto($item->valor, 4) }}</td>
+                                <td class="px-2 py-3 text-sm text-slate-800">{{ $mostrar }}</td>
                                 <td class="px-2 py-3">
                                     <div class="flex items-center justify-end">
                                         <button
                                             type="button"
                                             wire:click="eliminar({{ $item->id }})"
-                                            wire:confirm="¿Eliminar el valor {{ \App\Support\Numero::corto($item->valor, 4) }}?"
-                                            aria-label="Eliminar {{ \App\Support\Numero::corto($item->valor, 4) }}"
+                                            wire:confirm="¿Eliminar el valor {{ $mostrar }}?"
+                                            aria-label="Eliminar {{ $mostrar }}"
                                             class="text-red-400 hover:text-red-600"
                                         >
                                             <x-icon name="trash-2" class="h-4 w-4" />

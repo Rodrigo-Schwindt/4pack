@@ -3,6 +3,7 @@
 namespace App\Livewire\Configuracion;
 
 use App\Models\Ajuste;
+use App\Models\AjusteTexto;
 use App\Models\Parametro;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
@@ -19,7 +20,11 @@ class Ajustes extends Component
     public const GRUPOS = [
         'mangas' => 'Mangas',
         'bujes' => 'Bujes',
+        AjusteTexto::CANALES_OC => 'Canales de OC',
     ];
+
+    /** Grupos que son una lista de textos en vez de numeros. */
+    public const TEXTOS = [AjusteTexto::CANALES_OC];
 
     /** Solapa de las constantes de las formulas, ademas de los grupos. */
     public const VARIABLES = 'variables';
@@ -90,6 +95,18 @@ class Ajustes extends Component
 
     public function agregar(): void
     {
+        if ($this->esTexto()) {
+            $this->validate([
+                'valor' => ['required', 'string', 'max:60', Rule::unique('ajuste_textos', 'texto')->where('grupo', $this->grupo)],
+            ]);
+
+            AjusteTexto::create(['grupo' => $this->grupo, 'texto' => trim($this->valor)]);
+            $this->reset('valor');
+            session()->flash('status', 'Opción agregada.');
+
+            return;
+        }
+
         $this->validate([
             'grupo' => ['required', Rule::in(array_keys(self::GRUPOS))],
             'valor' => [
@@ -109,6 +126,13 @@ class Ajustes extends Component
 
     public function eliminar(int $id): void
     {
+        if ($this->esTexto()) {
+            AjusteTexto::delGrupo($this->grupo)->findOrFail($id)->delete();
+            session()->flash('status', 'Opción eliminada.');
+
+            return;
+        }
+
         Ajuste::delGrupo($this->grupo)->findOrFail($id)->delete();
 
         session()->flash('status', 'Valor eliminado.');
@@ -124,13 +148,22 @@ class Ajustes extends Component
         return ['valor.unique' => 'Ese valor ya está cargado en este grupo.'];
     }
 
+    private function esTexto(): bool
+    {
+        return in_array($this->grupo, self::TEXTOS, true);
+    }
+
     public function render()
     {
         return view('livewire.configuracion.ajustes', [
             'grupos' => self::GRUPOS,
-            'valores' => $this->grupo === self::VARIABLES
-                ? collect()
-                : Ajuste::delGrupo($this->grupo)->orderBy('valor')->get(['id', 'valor']),
+            'valores' => match (true) {
+                $this->grupo === self::VARIABLES => collect(),
+                // Los de texto se muestran igual: id y "valor".
+                $this->esTexto() => AjusteTexto::delGrupo($this->grupo)->orderBy('texto')->get(['id', 'texto as valor']),
+                default => Ajuste::delGrupo($this->grupo)->orderBy('valor')->get(['id', 'valor']),
+            },
+            'esTexto' => $this->esTexto(),
             'secciones' => Parametro::todas(),
         ]);
     }

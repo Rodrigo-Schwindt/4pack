@@ -39,9 +39,15 @@ class Cotizacion extends Model
     }
 
     /** Peso en kilos que quedo guardado con la cotizacion (bobinas). */
+    /**
+     * Kilos de toda la cotizacion: el producto principal mas los que se
+     * sumaron con Duplicar / Nuevo producto.
+     */
     public function pesoKg(): float
     {
-        return (float) ($this->datos['bobinas']['peso'] ?? 0);
+        $extras = collect($this->datos['productos_extra'] ?? [])->sum(fn (array $producto) => (float) ($producto['bobinas']['peso'] ?? 0));
+
+        return (float) ($this->datos['bobinas']['peso'] ?? 0) + $extras;
     }
 
     public function cliente(): BelongsTo

@@ -165,7 +165,8 @@ class CotizacionesDemoSeeder extends Seeder
             $indice = array_key_last($form->entregas);
             $form->entregas[$indice]['flete_zona_id'] = (string) $zonaId;
             $form->entregas[$indice]['flete_tramo_id'] = (string) FleteTramo::where('kg', $tramoKg)->value('id');
-            $form->entregas[$indice]['cantidad'] = (string) $cantidad;
+            // Las entregas reparten kilos: la parte de los metros que le toca, pasada a kg.
+            $form->entregas[$indice]['cantidad'] = (string) round((float) $form->bobinas['peso'] * $cantidad / $d['cantidad'], 2);
             $form->entregas[$indice]['direccion_id'] = (string) (ContactoDireccion::where('contacto_id', $cliente->id)->where('flete_zona_id', $zonaId)->value('id') ?? '');
         }
 
