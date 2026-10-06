@@ -148,7 +148,7 @@
 
         <div class="grid gap-x-6 gap-y-5 px-6 py-6 md:grid-cols-2 xl:grid-cols-4">
             {{-- Live: el cliente decide si se puede elegir el tipo y que productos se listan. --}}
-            <x-campo.select label="Cliente" modelo="cliente_id" :opciones="$clientes->pluck('razon_social', 'id')" live requerido />
+            <x-campo.select label="Cliente" modelo="cliente_id" :opciones="$clientes" live requerido />
             <x-campo.select label="Categoría" modelo="categoria" :opciones="Form::OPCIONES['categorias']" />
             <x-campo.texto label="Descuento" modelo="ajuste_categoria" tipo="number" paso="0.01" modificador="live.blur" />
 

@@ -390,6 +390,8 @@ CREATE TABLE `users` (
   `remember_token` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT NULL,
+  `rol_id` bigint unsigned DEFAULT NULL,
+  `activo` tinyint(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
   UNIQUE KEY `users_username_unique` (`username`),
   UNIQUE KEY `users_email_unique` (`email`)
@@ -402,7 +404,7 @@ CREATE TABLE `users` (
 
 LOCK TABLES `users` WRITE;
 /*!40000 ALTER TABLE `users` DISABLE KEYS */;
-INSERT INTO `users` VALUES (1,'Administrador','admin','admin@4pack.com','2026-08-24 17:14:15','$2y$12$cr62P8iuKBk57ynFrlTMguPA0QAj6Sfzm6BE7DDd0Bjq.DqviNguO',NULL,'2026-08-20 17:19:06','2026-08-24 17:14:16');
+INSERT INTO `users` VALUES (1,'Administrador','admin','admin@4pack.com','2026-08-24 17:14:15','$2y$12$cr62P8iuKBk57ynFrlTMguPA0QAj6Sfzm6BE7DDd0Bjq.DqviNguO',NULL,'2026-08-20 17:19:06','2026-08-24 17:14:16',1,1);
 /*!40000 ALTER TABLE `users` ENABLE KEYS */;
 UNLOCK TABLES;
 

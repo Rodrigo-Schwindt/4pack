@@ -4,45 +4,113 @@ namespace App\Livewire;
 
 use App\Models\Contacto;
 use App\Models\Cotizacion;
-use App\Models\Parametro;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
 /**
- * Toneladas aprobadas hoy, cotizaciones pendientes hace mas de 7 dias y
- * prospectos de la semana, todo desde la base.
+ * Kilos cotizados, con orden de compra y entregados en un rango de fechas,
+ * cotizaciones pendientes hace mas de 7 dias y prospectos de la semana.
  */
 #[Layout('components.layouts.panel')]
 #[Title('Dashboard')]
 class Dashboard extends Component
 {
+    /** Rango del panel de kilos; arranca en el mes en curso. */
+    public string $desde = '';
+
+    public string $hasta = '';
+
+    public function mount(): void
+    {
+        $this->desde = now()->startOfMonth()->format('Y-m-d');
+        $this->hasta = now()->endOfMonth()->format('Y-m-d');
+    }
+
+    public function updatedDesde(): void
+    {
+        $this->validarRango();
+    }
+
+    public function updatedHasta(): void
+    {
+        $this->validarRango();
+    }
+
     public function render()
     {
         return view('livewire.dashboard', [
-            'toneladas' => $this->toneladasHoy(),
+            'ingreso' => $this->ingresoKg(),
             'alertas' => $this->alertas(),
             'prospectos' => $this->nuevosProspectos(),
         ]);
     }
 
-    /**
-     * Toneladas de las cotizaciones aprobadas hoy contra el objetivo diario.
-     *
-     * @return array{objetivo: float, aprobadas: float}
-     */
-    private function toneladasHoy(): array
+    private function validarRango(): void
     {
-        $kilos = Cotizacion::where('estado', Cotizacion::APROBADA)
-            ->whereDate('aprobada_en', today())
-            ->get()
-            ->sum(fn (Cotizacion $cotizacion) => $cotizacion->pesoKg());
+        $this->validate(
+            [
+                'desde' => ['required', 'date'],
+                'hasta' => ['required', 'date', 'after_or_equal:desde'],
+            ],
+            ['hasta.after_or_equal' => 'El hasta no puede ser anterior al desde.'],
+            ['desde' => 'desde', 'hasta' => 'hasta'],
+        );
+    }
 
-        return [
-            'objetivo' => max(Parametro::valor(Parametro::OBJETIVO_TONELADAS_DIA), 0.01),
-            'aprobadas' => round($kilos / 1000, 2),
-        ];
+    /**
+     * Kilos del rango: lo cotizado por fecha de cotizacion, lo que entro por
+     * orden de compra y lo que se entrego, cada uno con su propia fecha.
+     *
+     * @return array{cotizado: float, oc: float, entregado: float}
+     */
+    private function ingresoKg(): array
+    {
+        [$desde, $hasta] = $this->rango();
+
+        $cotizado = 0.0;
+        $oc = 0.0;
+        $entregado = 0.0;
+
+        foreach (Cotizacion::all() as $cotizacion) {
+            if ($cotizacion->fecha->betweenIncluded($desde, $hasta)) {
+                $cotizado += $cotizacion->pesoKg();
+            }
+
+            $ingresoOc = $cotizacion->fechaOrdenCompra();
+
+            if ($ingresoOc !== null && $ingresoOc->betweenIncluded($desde, $hasta)) {
+                $oc += $cotizacion->pesoKg();
+            }
+
+            $entregado += $cotizacion->kgEntregadosEntre($desde, $hasta);
+        }
+
+        return ['cotizado' => $cotizado, 'oc' => $oc, 'entregado' => $entregado];
+    }
+
+    /**
+     * El rango elegido. Si todavia no es una fecha valida, el mes en curso.
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function rango(): array
+    {
+        $desde = $this->comoFecha($this->desde) ?? now()->startOfMonth();
+        $hasta = $this->comoFecha($this->hasta) ?? now()->endOfMonth();
+
+        return $hasta->lt($desde) ? [$desde, $desde->copy()] : [$desde, $hasta];
+    }
+
+    private function comoFecha(string $valor): ?Carbon
+    {
+        try {
+            return $valor === '' ? null : Carbon::parse($valor)->startOfDay();
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     /**

@@ -2,8 +2,9 @@
 
 namespace App\Livewire\Contactos;
 
+use App\Livewire\Concerns\Paginado;
 use App\Models\Contacto;
-use Illuminate\Support\Collection;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -14,6 +15,8 @@ use Livewire\Component;
 #[Layout('components.layouts.panel')]
 abstract class Listado extends Component
 {
+    use Paginado;
+
     /** Solapa activa: id del vendedor o null para "Todos". */
     #[Url(as: 'vendedor', except: null)]
     public ?int $vendedorActivo = null;
@@ -27,6 +30,7 @@ abstract class Listado extends Component
     public function filtrar(?int $vendedorId): void
     {
         $this->vendedorActivo = $vendedorId;
+        $this->resetPage();
     }
 
     public function ver(int $id): void
@@ -99,16 +103,16 @@ abstract class Listado extends Component
     }
 
     /**
-     * Filas del listado, ya aplanadas para la tabla.
+     * Filas del listado, ya aplanadas para la tabla, de a una pagina.
      */
-    protected function listado(?int $vendedorId = null): Collection
+    protected function listado(?int $vendedorId = null): LengthAwarePaginator
     {
         return Contacto::with(['vendedor', 'rubro'])
             ->enEstado($this->estado())
             ->when($vendedorId, fn ($query) => $query->where('vendedor_id', $vendedorId))
             ->orderByDesc('codigo')
-            ->get()
-            ->map(fn (Contacto $contacto) => [
+            ->paginate(self::POR_PAGINA)
+            ->through(fn (Contacto $contacto) => [
                 'id' => $contacto->id,
                 'codigo' => $contacto->codigo,
                 'razon_social' => $contacto->razon_social,

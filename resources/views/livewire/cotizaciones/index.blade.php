@@ -54,8 +54,9 @@
                                 <button
                                     type="button"
                                     wire:click="cambiarEstado({{ $cotizacion['id'] }})"
-                                    title="Cambiar estado"
-                                    class="rounded-md px-3 py-1 text-xs font-medium {{ match ($cotizacion['estado']) { 'aprobada' => 'bg-green-100 text-green-700 hover:bg-green-200', 'finalizada' => 'bg-slate-100 text-slate-600 hover:bg-slate-200', default => 'bg-red-100 text-red-600 hover:bg-red-200' } }}"
+                                    @disabled(! $puedeAprobar)
+                                    title="{{ $puedeAprobar ? 'Cambiar estado' : 'Tu rol no puede cambiar el estado' }}"
+                                    class="rounded-md px-3 py-1 text-xs font-medium {{ match ($cotizacion['estado']) { 'aprobada' => 'bg-green-100 text-green-700 hover:bg-green-200', 'finalizada' => 'bg-slate-100 text-slate-600 hover:bg-slate-200', 'rechazada' => 'bg-orange-100 text-orange-700 hover:bg-orange-200', default => 'bg-red-100 text-red-600 hover:bg-red-200' } }} disabled:cursor-default"
                                 >
                                     {{ $cotizacion['estado_nombre'] }}
                                 </button>
@@ -95,4 +96,8 @@
             </table>
         </div>
     </div>
+
+    @if ($cotizaciones->hasPages())
+        <div class="mt-4">{{ $cotizaciones->links() }}</div>
+    @endif
 </div>

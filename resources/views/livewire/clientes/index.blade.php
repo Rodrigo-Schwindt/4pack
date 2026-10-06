@@ -106,5 +106,9 @@
         </div>
     </div>
 
+    @if ($clientes->hasPages())
+        <div class="mt-4">{{ $clientes->links() }}</div>
+    @endif
+
     <x-ficha-contacto :ficha="$ficha" ruta="clientes" titulo="Cliente" />
 </div>

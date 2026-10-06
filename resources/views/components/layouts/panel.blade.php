@@ -1,13 +1,14 @@
 @php
     // Las vistas todavia no desarrolladas no navegan a ningun lado.
-    $items = [
-        ['titulo' => 'Dashboard', 'icono' => 'dashboard', 'href' => '/dashboard'],
-        ['titulo' => 'Prospectos', 'icono' => 'contacto', 'href' => '/prospectos'],
-        ['titulo' => 'Clientes', 'icono' => 'contacto', 'href' => '/clientes'],
-        ['titulo' => 'Cotizaciones', 'icono' => 'cotizaciones', 'href' => '/cotizaciones'],
-        ['titulo' => 'Estadísticas', 'icono' => 'estadisticas', 'href' => null],
-        ['titulo' => 'Configuración', 'icono' => 'configuracion', 'href' => '/configuracion'],
-    ];
+    // Cada item con los permisos que lo muestran: el menu tiene solo lo que el usuario puede abrir.
+    $items = array_filter([
+        ['titulo' => 'Dashboard', 'icono' => 'dashboard', 'href' => '/dashboard', 'permisos' => ['dashboard']],
+        ['titulo' => 'Prospectos', 'icono' => 'contacto', 'href' => '/prospectos', 'permisos' => ['prospectos']],
+        ['titulo' => 'Clientes', 'icono' => 'contacto', 'href' => '/clientes', 'permisos' => ['clientes']],
+        ['titulo' => 'Cotizaciones', 'icono' => 'cotizaciones', 'href' => '/cotizaciones', 'permisos' => ['cotizaciones']],
+        ['titulo' => 'Estadísticas', 'icono' => 'estadisticas', 'href' => '/estadisticas', 'permisos' => ['estadisticas']],
+        ['titulo' => 'Configuración', 'icono' => 'configuracion', 'href' => '/configuracion', 'permisos' => ['costos', 'vendedores', 'usuarios']],
+    ], fn (array $item) => auth()->user()?->puede(...$item['permisos']));
 
     // Los iconos del diseño miden distinto: el ancho fijo mantiene los titulos alineados.
     $cajaIcono = 'flex w-[17px] shrink-0 items-center justify-center';

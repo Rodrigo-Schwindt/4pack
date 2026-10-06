@@ -40,10 +40,18 @@ class Login extends Component
             ]);
         }
 
+        if (! Auth::user()->activo) {
+            Auth::logout();
+
+            throw ValidationException::withMessages([
+                'username' => 'Tu usuario está inactivo. Pedile a un administrador que lo active.',
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
         Session::regenerate();
 
-        $this->redirectIntended(default: route('dashboard', absolute: false), navigate: true);
+        $this->redirectIntended(default: Auth::user()->inicio(), navigate: true);
     }
 
     protected function ensureIsNotRateLimited(): void

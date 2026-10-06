@@ -84,4 +84,8 @@
             </table>
         </div>
     </section>
+
+    @if ($vendedores->hasPages())
+        <div class="mt-4">{{ $vendedores->links() }}</div>
+    @endif
 </div>

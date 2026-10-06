@@ -84,13 +84,6 @@
     <hr class="border-slate-100" />
     @include('livewire.cotizaciones.tipos.bobinas.forma-entrega')
 
-    {{-- En bobinas todo lo tecnico quedo en Datos de producto y en cada material. --}}
-    @if ($tipo_producto === 'confeccion-dpk')
-        <h2 class="{{ $tituloSeccion }}">Datos técnicos</h2>
-        <hr class="border-slate-100" />
-        @include('livewire.cotizaciones.tipos.confeccion-dpk.tecnicos')
-    @endif
-
     <h2 class="{{ $tituloSeccion }}">Condiciones de pago</h2>
     <hr class="border-slate-100" />
     @include('livewire.cotizaciones.tipos.bobinas.pagos')

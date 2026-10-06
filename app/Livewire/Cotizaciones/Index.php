@@ -2,7 +2,9 @@
 
 namespace App\Livewire\Cotizaciones;
 
+use App\Livewire\Concerns\Paginado;
 use App\Models\Cotizacion;
+use App\Models\Rol;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -11,7 +13,15 @@ use Livewire\Component;
 #[Title('Cotizaciones')]
 class Index extends Component
 {
+    use Paginado;
+
     public string $busqueda = '';
+
+    /** Buscar arranca desde la primera pagina. */
+    public function updatedBusqueda(): void
+    {
+        $this->resetPage();
+    }
 
     public function eliminar(int $id): void
     {
@@ -22,6 +32,8 @@ class Index extends Component
 
     public function cambiarEstado(int $id): void
     {
+        abort_unless(auth()->user()?->puede(Rol::APROBAR_COTIZACIONES), 403, 'No tenés permiso para cambiar el estado de las cotizaciones.');
+
         $cotizacion = Cotizacion::findOrFail($id);
 
         // Pendiente -> Aprobada -> Finalizada -> Pendiente.
@@ -49,8 +61,8 @@ class Index extends Component
             })
             ->orderByDesc('fecha')
             ->orderByDesc('id')
-            ->get()
-            ->map(fn (Cotizacion $cotizacion) => [
+            ->paginate(self::POR_PAGINA)
+            ->through(fn (Cotizacion $cotizacion) => [
                 'id' => $cotizacion->id,
                 'numero' => $cotizacion->numero,
                 'fecha' => $cotizacion->fecha->format('d/m/Y'),
@@ -60,6 +72,6 @@ class Index extends Component
                 'estado_nombre' => Cotizacion::ESTADOS[$cotizacion->estado] ?? ucfirst($cotizacion->estado),
             ]);
 
-        return view('livewire.cotizaciones.index', ['cotizaciones' => $cotizaciones, 'buscando' => $texto !== '']);
+        return view('livewire.cotizaciones.index', ['cotizaciones' => $cotizaciones, 'buscando' => $texto !== '', 'puedeAprobar' => auth()->user()->puede(Rol::APROBAR_COTIZACIONES)]);
     }
 }

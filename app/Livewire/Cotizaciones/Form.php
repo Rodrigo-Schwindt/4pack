@@ -17,6 +17,7 @@ use App\Models\InsumoItem;
 use App\Models\InsumoPrecio;
 use App\Models\Operativo;
 use App\Models\Parametro;
+use App\Models\Rol;
 use App\Models\Proveedor;
 use App\Models\VariableCosto;
 use App\Models\Vendedor;
@@ -802,6 +803,8 @@ class Form extends Component
 
     private function aprobarAhora(): void
     {
+        abort_unless(auth()->user()?->puede(Rol::APROBAR_COTIZACIONES), 403, 'No tenés permiso para aprobar cotizaciones.');
+
         $esNueva = $this->guardada === null;
 
         $this->persistir();
@@ -816,11 +819,39 @@ class Form extends Component
             ]);
         }
 
-        session()->flash('status', 'Cotización '.$this->numero.' aprobada.');
+        $convertido = $this->pasarACliente('aprobó la cotización '.$this->numero);
+
+        session()->flash('status', 'Cotización '.$this->numero.' aprobada.'.($convertido ? ' '.$convertido : ''));
 
         if ($esNueva) {
             $this->redirectRoute('cotizaciones.edit', $this->guardada, navigate: true);
         }
+    }
+
+    /**
+     * Un prospecto se cotiza; cuando compra (se aprueba la cotizacion o se
+     * envia el pedido) pasa a ser cliente. Es el mismo contacto: conserva su
+     * codigo, datos, direcciones, productos e historial.
+     *
+     * @return string|null el aviso para mostrar, si se convirtio
+     */
+    private function pasarACliente(string $motivo): ?string
+    {
+        $contacto = $this->guardada?->cliente;
+
+        if ($contacto === null || $contacto->estado !== Contacto::PROSPECTO) {
+            return null;
+        }
+
+        $contacto->update(['estado' => Contacto::CLIENTE]);
+
+        $contacto->actividades()->create([
+            'fecha' => now(),
+            'descripcion' => 'Pasó de prospecto a cliente: '.$motivo,
+            'autor' => $this->guardada->vendedor?->nombre ?? auth()->user()->name,
+        ]);
+
+        return $contacto->razon_social.' pasó de prospecto a cliente.';
     }
 
     /**
@@ -984,7 +1015,9 @@ class Form extends Component
             ]);
         }
 
-        session()->flash('status', 'Pedido enviado: la cotización '.$this->numero.' pasó a Finalizada.');
+        $convertido = $this->pasarACliente('envió el pedido de la cotización '.$this->numero);
+
+        session()->flash('status', 'Pedido enviado: la cotización '.$this->numero.' pasó a Finalizada.'.($convertido ? ' '.$convertido : ''));
 
         if ($esNueva) {
             $this->redirectRoute('cotizaciones.edit', $this->guardada, navigate: true);
@@ -3897,9 +3930,13 @@ class Form extends Component
 
         $pantalla = view($vista, [
             'estados' => Cotizacion::ESTADOS,
-            'clientes' => Contacto::enEstado(Contacto::CLIENTE)
+            // Se cotiza a clientes y a prospectos; los prospectos van marcados.
+            'clientes' => Contacto::whereIn('estado', [Contacto::CLIENTE, Contacto::PROSPECTO])
                 ->orderBy('razon_social')
-                ->get(['id', 'razon_social']),
+                ->get(['id', 'razon_social', 'estado'])
+                ->mapWithKeys(fn (Contacto $contacto) => [
+                    $contacto->id => $contacto->razon_social.($contacto->estado === Contacto::PROSPECTO ? ' (prospecto)' : ''),
+                ]),
             'vendedores' => Vendedor::orderBy('nombre')->get(['id', 'nombre']),
             'mangas' => Ajuste::opciones('mangas'),
             'bujes' => Ajuste::opciones('bujes'),

@@ -44,13 +44,13 @@ function campoBloqueado(string $html, string $modelo): bool
 
 test('las vistas del panel responden', function (string $url) {
     $this->get($url)->assertOk();
-})->with(['/dashboard', '/prospectos', '/clientes', '/cotizaciones', '/cotizaciones/create', '/configuracion', '/vendedores']);
+})->with(['/dashboard', '/prospectos', '/clientes', '/cotizaciones', '/cotizaciones/create', '/configuracion', '/vendedores', '/estadisticas']);
 
 test('las vistas del panel exigen sesión', function (string $url) {
     auth()->logout();
 
     $this->get($url)->assertRedirect('/login');
-})->with(['/dashboard', '/prospectos', '/clientes', '/cotizaciones', '/cotizaciones/create', '/configuracion', '/vendedores']);
+})->with(['/dashboard', '/prospectos', '/clientes', '/cotizaciones', '/cotizaciones/create', '/configuracion', '/vendedores', '/estadisticas']);
 
 test('el listado de prospectos deja filtrar por vendedor', function () {
     $ariel = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
@@ -258,16 +258,59 @@ test('cambiar el tipo de producto vuelve a la solapa de datos', function () {
         ->assertSet('solapa', 'datos');
 });
 
-test('el alta de cotizaciones lista los clientes y los vendedores', function () {
-    Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
+test('el alta de cotizaciones lista clientes y prospectos, y los vendedores', function () {
+    $ariel = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
     Contacto::create(['codigo' => '000445', 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
-    Contacto::create(['codigo' => '000446', 'estado' => Contacto::PROSPECTO, 'razon_social' => 'Alican']);
+    $prospecto = Contacto::create(['codigo' => '000446', 'estado' => Contacto::PROSPECTO, 'razon_social' => 'Alican']);
 
+    // Al prospecto tambien se lo cotiza: aparece marcado y deja cargar el producto.
     Livewire::test(App\Livewire\Cotizaciones\Form::class)
         ->assertSee('Arcor')
         ->assertSee('Ariel')
-        ->assertDontSee('Alican');
+        ->assertSee('Alican (prospecto)')
+        ->set('cliente_id', $prospecto->id)
+        ->set('vendedor_id', $ariel->id)
+        ->set('tipo_producto', 'bobinas')
+        ->call('abrirAlta', 'producto')
+        ->set('nuevoValor', 'Bolsa de prueba')
+        ->call('guardarAlta')
+        ->assertHasNoErrors()
+        ->assertSee('Bolsa de prueba');
+
+    expect($prospecto->productos()->pluck('nombre')->all())->toBe(['Bolsa de prueba']);
 });
+
+test('el prospecto pasa a cliente cuando compra: al aprobar o al enviar el pedido', function (string $accion) {
+    $ariel = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
+    $prospecto = Contacto::create(['codigo' => '000446', 'estado' => Contacto::PROSPECTO, 'razon_social' => 'Alican']);
+
+    $formulario = Livewire::test(App\Livewire\Cotizaciones\Form::class)
+        ->set('cliente_id', $prospecto->id)
+        ->set('vendedor_id', $ariel->id)
+        ->set('tipo_producto', 'bobinas');
+
+    // Cotizar y guardar no lo convierte: todavia no compro.
+    $formulario->call('guardar');
+    expect($prospecto->fresh()->estado)->toBe(Contacto::PROSPECTO);
+
+    $guardada = App\Models\Cotizacion::firstOrFail();
+    $reabierta = Livewire::test(App\Livewire\Cotizaciones\Form::class, ['guardada' => $guardada]);
+
+    if ($accion === 'aprobar') {
+        $reabierta->call('verSolapa', 'cotizacion')->call('aprobar');
+    } else {
+        $reabierta->call('verSolapa', 'orden-de-compra')->set('oc.numero', '4510959004')->call('enviarPedido');
+    }
+
+    $contacto = $prospecto->fresh();
+    expect($contacto->estado)->toBe(Contacto::CLIENTE)
+        ->and($contacto->codigo)->toBe('000446')
+        ->and($contacto->actividades()->where('descripcion', 'like', 'Pasó de prospecto a cliente:%')->count())->toBe(1);
+
+    // Si vuelve a pasar, no se repite: ya es cliente.
+    $reabierta->call('aprobar');
+    expect($contacto->actividades()->where('descripcion', 'like', 'Pasó de prospecto a cliente:%')->count())->toBe(1);
+})->with(['aprobar', 'enviar pedido']);
 
 test('elegir bobinas despliega sus secciones', function () {
     cotizacionIniciada()
@@ -1157,4 +1200,178 @@ test('se puede agendar una dirección de entrega del cliente desde la cotizació
         ->set('nuevaDireccion.direccion', 'Otra 123')
         ->call('guardarDireccion')
         ->assertHasErrors(['nuevaDireccion.flete_zona_id', 'nuevaDireccion.nueva_zona']);
+});
+
+test('el dashboard mide los kg cotizados, los de la OC y los entregados del rango', function () {
+    $cliente = Contacto::create(['codigo' => Contacto::siguienteCodigo(), 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
+
+    App\Models\Cotizacion::create([
+        'numero' => '000001/'.now()->year,
+        'fecha' => today(),
+        'contacto_id' => $cliente->id,
+        'estado' => App\Models\Cotizacion::APROBADA,
+        'datos' => [
+            'bobinas' => ['peso' => '1000'],
+            // Entregada la primera mitad; la segunda todavía no.
+            'entregas' => [
+                ['cantidad' => '600', 'cantidad_entregada' => '600', 'fecha_real' => today()->format('Y-m-d')],
+                ['cantidad' => '400', 'cantidad_entregada' => '', 'fecha_real' => ''],
+            ],
+            'oc' => ['numero' => 'OC-1', 'fecha_recibo' => today()->format('Y-m-d')],
+        ],
+    ]);
+
+    // El rango arranca en el mes en curso, así que entra todo.
+    $dashboard = Livewire::test(App\Livewire\Dashboard::class)
+        ->assertSet('desde', now()->startOfMonth()->format('Y-m-d'))
+        ->assertSet('hasta', now()->endOfMonth()->format('Y-m-d'))
+        ->assertSee('Ingreso de kg en OC')
+        ->assertSee('1.000 kg')
+        ->assertSee('600 kg');
+
+    // Fuera del rango no queda nada que medir.
+    $dashboard->set('desde', today()->addDay()->format('Y-m-d'))
+        ->set('hasta', today()->addDays(10)->format('Y-m-d'))
+        ->assertHasNoErrors()
+        ->assertDontSee('1.000 kg')
+        ->assertSee('0 kg');
+
+    // El hasta no puede ser anterior al desde.
+    $dashboard->set('hasta', today()->subMonth()->format('Y-m-d'))
+        ->assertHasErrors('hasta')
+        ->assertSee('El hasta no puede ser anterior al desde.');
+});
+
+/**
+ * Cotizacion guardada con lo minimo que miran las estadisticas.
+ */
+function cotizacionGuardada(Contacto $cliente, Vendedor $vendedor, string $fecha, string $estado, array $datos = []): App\Models\Cotizacion
+{
+    static $numero = 0;
+
+    return App\Models\Cotizacion::create([
+        'numero' => sprintf('%06d/%d', ++$numero, now()->year),
+        'fecha' => $fecha,
+        'contacto_id' => $cliente->id,
+        'vendedor_id' => $vendedor->id,
+        'tipo_producto' => 'bobinas',
+        'estado' => $estado,
+        'datos' => $datos + ['bobinas' => ['peso' => '1000'], 'entregas' => [], 'oc' => []],
+    ]);
+}
+
+test('estadísticas cuenta las cotizaciones del período y las compara con el anterior', function () {
+    $ariel = Vendedor::create(['nombre' => 'Ariel Gómez', 'comision_bobinas' => 2, 'activo' => true]);
+    $carlos = Vendedor::create(['nombre' => 'Carlos', 'comision_bobinas' => 1, 'activo' => true]);
+    $arcor = Contacto::create(['codigo' => Contacto::siguienteCodigo(), 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor', 'vendedor_id' => $ariel->id]);
+    Contacto::create(['codigo' => Contacto::siguienteCodigo(), 'estado' => Contacto::CLIENTE, 'razon_social' => 'Bagley', 'vendedor_id' => $carlos->id]);
+
+    // Un periodo fijo de 10 dias y el anterior, de la misma duracion.
+    $desde = today()->startOfMonth();
+    $hasta = $desde->copy()->addDays(9);
+    $antes = $desde->copy()->subDays(5)->format('Y-m-d');
+    $dentro = $desde->copy()->addDays(2)->format('Y-m-d');
+
+    // En el periodo: dos aprobadas (una con OC), una rechazada y una pendiente, todas de Arcor.
+    cotizacionGuardada($arcor, $ariel, $dentro, App\Models\Cotizacion::APROBADA, ['oc' => ['numero' => 'OC-1']]);
+    cotizacionGuardada($arcor, $ariel, $dentro, App\Models\Cotizacion::FINALIZADA);
+    cotizacionGuardada($arcor, $carlos, $dentro, App\Models\Cotizacion::RECHAZADA);
+    cotizacionGuardada($arcor, $carlos, $dentro, App\Models\Cotizacion::PENDIENTE);
+
+    // En el periodo anterior: una sola aprobada.
+    cotizacionGuardada($arcor, $ariel, $antes, App\Models\Cotizacion::APROBADA);
+
+    $estadisticas = Livewire::test(App\Livewire\Estadisticas::class)
+        ->set('desde', $desde->format('Y-m-d'))
+        ->set('hasta', $hasta->format('Y-m-d'))
+        ->call('aplicar')
+        ->assertHasNoErrors();
+
+    $tarjetas = $estadisticas->viewData('tarjetas');
+
+    expect($tarjetas['procesadas']['cantidad'])->toBe(4)
+        ->and($tarjetas['procesadas']['bobinas_kg'])->toBe(4000.0)
+        ->and($tarjetas['aprobadas']['cantidad'])->toBe(2)
+        ->and($tarjetas['aprobadas']['tendencia'])->toBe(100)
+        ->and($tarjetas['rechazadas']['cantidad'])->toBe(1)
+        ->and($tarjetas['con_oc']['cantidad'])->toBe(1)
+        // Bagley no cotizo nada en el periodo.
+        ->and($tarjetas['sin_cotizar']['cantidad'])->toBe(1);
+
+    expect($estadisticas->viewData('oc'))->toBe(['total' => 2, 'con' => 1, 'sin' => 1])
+        ->and($estadisticas->viewData('cotizacionesPorVendedor'))->toBe([
+            ['nombre' => 'Ariel G.', 'cantidad' => 2],
+            ['nombre' => 'Carlos', 'cantidad' => 2],
+        ]);
+
+    // Elegir un vendedor recien cuenta al aplicar.
+    $estadisticas->set('vendedor', (string) $carlos->id);
+
+    expect($estadisticas->viewData('tarjetas')['procesadas']['cantidad'])->toBe(4);
+
+    $estadisticas->call('aplicar');
+
+    expect($estadisticas->viewData('tarjetas')['procesadas']['cantidad'])->toBe(2)
+        ->and($estadisticas->viewData('tarjetas')['aprobadas']['cantidad'])->toBe(0);
+
+    // Limpiar vuelve a todos, en el mes en curso.
+    $estadisticas->call('limpiar')
+        ->assertSet('vendedor', '')
+        ->assertSet('desde', now()->startOfMonth()->format('Y-m-d'))
+        ->assertSet('hasta', now()->endOfMonth()->format('Y-m-d'));
+});
+
+test('estadísticas marca los prospectos sin seguimiento', function () {
+    $ariel = Vendedor::create(['nombre' => 'Ariel', 'comision_bobinas' => 2, 'activo' => true]);
+
+    $sinSeguimiento = Contacto::create(['codigo' => '000445', 'estado' => Contacto::PROSPECTO, 'razon_social' => 'Alican', 'vendedor_id' => $ariel->id]);
+    $sinSeguimiento->actividades()->create(['fecha' => today(), 'descripcion' => 'Se creó el prospecto']);
+
+    $conSeguimiento = Contacto::create(['codigo' => '000446', 'estado' => Contacto::PROSPECTO, 'razon_social' => 'Vitalcan', 'vendedor_id' => $ariel->id]);
+    $conSeguimiento->actividades()->create(['fecha' => today()->addDays(3), 'descripcion' => 'Se lo llamó']);
+
+    $estadisticas = Livewire::test(App\Livewire\Estadisticas::class)
+        ->assertSee('Alican')
+        ->assertSee('Sin seguimiento');
+
+    $detalle = collect($estadisticas->viewData('detalle'))->keyBy('razon_social');
+
+    expect($detalle['Alican']['sin_seguimiento'])->toBeTrue()
+        ->and($detalle['Vitalcan']['sin_seguimiento'])->toBeFalse()
+        ->and($detalle['Vitalcan']['ultimo_contacto'])->toBe(today()->addDays(3)->format('d/m/Y'))
+        ->and($estadisticas->viewData('tarjetas')['prospectos']['cantidad'])->toBe(2);
+});
+
+test('estadísticas no deja un hasta anterior al desde', function () {
+    Livewire::test(App\Livewire\Estadisticas::class)
+        ->set('desde', '2026-06-30')
+        ->set('hasta', '2026-06-01')
+        ->call('aplicar')
+        ->assertHasErrors('hasta');
+});
+
+test('el DemoSeeder carga datos completos, se puede repetir y demo:borrar se lleva solo la demo', function () {
+    $this->seed([Database\Seeders\AjustesSeeder::class, Database\Seeders\FleteInsumosSeeder::class, Database\Seeders\InsumosSeeder::class, Database\Seeders\OperativosSeeder::class, Database\Seeders\VariablesCostosSeeder::class]);
+
+    // Un cliente real que la demo no tiene que tocar.
+    $real = Contacto::create(['codigo' => Contacto::siguienteCodigo(), 'estado' => Contacto::CLIENTE, 'razon_social' => 'Arcor']);
+
+    $this->seed(Database\Seeders\DemoSeeder::class);
+    $this->seed(Database\Seeders\DemoSeeder::class);
+
+    $demo = App\Support\DatosDemo::contactos()->pluck('id');
+    $cotizaciones = App\Models\Cotizacion::whereIn('contacto_id', $demo)->get();
+
+    expect($demo)->toHaveCount(18)
+        ->and($cotizaciones)->toHaveCount(45)
+        // El peso lo calcula el motor de la cotizacion, nunca queda en cero.
+        ->and($cotizaciones->filter(fn ($cotizacion) => $cotizacion->pesoKg() <= 0))->toBeEmpty()
+        ->and($cotizaciones->pluck('estado')->unique()->sort()->values()->all())->toBe(['aprobada', 'finalizada', 'pendiente', 'rechazada'])
+        ->and($cotizaciones->filter->tieneOrdenCompra())->not->toBeEmpty();
+
+    $this->artisan('demo:borrar', ['--force' => true])->assertSuccessful();
+
+    expect(App\Support\DatosDemo::contactos()->count())->toBe(0)
+        ->and(App\Models\Cotizacion::count())->toBe(0)
+        ->and(Contacto::whereKey($real->id)->exists())->toBeTrue();
 });

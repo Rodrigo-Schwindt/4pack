@@ -26,7 +26,8 @@
                     type="button"
                     wire:click="aprobar"
                     wire:loading.attr="disabled"
-                    @disabled($aprobada)
+                    @disabled($aprobada || ! auth()->user()->puede('aprobar_cotizaciones'))
+                    @unless (auth()->user()->puede('aprobar_cotizaciones')) title="Tu rol no puede aprobar cotizaciones" @endunless
                     class="flex h-10 items-center gap-2 rounded-md bg-[#1c5480] px-8 text-sm font-medium text-white hover:bg-[#174567] disabled:cursor-default disabled:opacity-60"
                 >
                     <x-icon name="loader-circle" class="h-4 w-4 animate-spin" wire:loading wire:target="aprobar" />
